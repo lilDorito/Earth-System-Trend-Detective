@@ -7,3 +7,6 @@ netCDF4
 pyproj
 earthaccess
 copernicusmarine
+h5py
+h5netcdf
+# for notebooks/01_nasa_grid_overview.ipynb: scipy (in requirements.txt), matplotlib, jupyter

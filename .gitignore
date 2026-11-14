@@ -8,6 +8,7 @@ data/grid/*
 merra2/
 data/ncei/
 data/ocean/
+data/nasa_grid/
 *.nc
 *.nc4
 

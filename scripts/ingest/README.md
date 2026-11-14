@@ -1,6 +1,6 @@
 # Data ingestion scripts
 
-Two command-line tools that build the local datasets for the project. All outputs go to `data/` (git-ignored); the folders can be moved with `NCEI_DIR` and `OCEAN_DIR`.
+Three command-line tools that build the local datasets for the project. All outputs go to `data/` (git-ignored); the folders can be moved with `NCEI_DIR`, `OCEAN_DIR` and `NASA_GRID_DIR`.
 
 ```
 python -m pip install -r requirements-ingest.txt
@@ -11,7 +11,7 @@ Secrets are read from `.env` in the project root (or from environment variables)
 | Variable | Used by | How to get it |
 |---|---|---|
 | `NCEI_TOKEN` | `ncei.py` | https://www.ncei.noaa.gov/cdo-web/token (5 requests/s, 10 000/day per token) |
-| `EARTHDATA_TOKEN` | `ocean.py` (chl, grace, oscar) | https://urs.earthdata.nasa.gov, Generate Token (expires, renew on 401/403) |
+| `EARTHDATA_TOKEN` | `ocean.py` (chl, grace, oscar), `nasa_grid.py` | https://urs.earthdata.nasa.gov, Generate Token (expires, renew on 401/403) |
 | `CMEMS_USERNAME`, `CMEMS_PASSWORD` | `ocean.py` (sealevel) | free account at https://data.marine.copernicus.eu |
 
 ## NCEI station data (`ncei.py`)
@@ -54,3 +54,42 @@ python scripts/ingest/ocean.py merge                             # rebuild the m
 ```
 
 `run` checks credentials and disk space, skips sources it cannot run with a clear message, retries failing sources (`--passes`), writes `data/ocean/run.log` and prints a summary. Raw files are deleted after processing (`--keep-raw` keeps them). If a server is down, rerun the same command later: finished years are skipped. A file that cannot be downloaded automatically (for example OceanSODA) can be placed by hand into `data/ocean/raw/<source>/`.
+
+## NASA land and atmosphere grids (`nasa_grid.py`)
+
+Monthly 1x1 degree grids, 2000-2025, for 20 variables from three NASA GES DISC products. Granules are streamed through `earthaccess` and regridded on the fly; raw files are never saved. Without `EARTHDATA_TOKEN` the first run asks for your Earthdata login and keeps it in `~/.netrc`.
+
+| Product | Variables | Domain |
+|---|---|---|
+| GLDAS Noah 0.25 deg v2.1 (`GLDAS_NOAH025_M`) | 12: `gldas_evap`, `gldas_precip`, `gldas_tair`, `gldas_skin_temp`, `gldas_soilmoist_0_10`, `gldas_soilmoist_10_40`, `gldas_rootmoist`, `gldas_swe`, `gldas_snowdepth`, `gldas_potevap`, `gldas_swdown`, `gldas_wind` | land only, 60S-90N |
+| GPM IMERG Final v07 (`GPM_3IMERGM`) | `imerg_precip` | global, land and ocean |
+| MERRA-2 (`M2TMNXSLV` 5.12.4) | 7: `merra2_t2m`, `merra2_ts`, `merra2_qv2m`, `merra2_tqv`, `merra2_u10m`, `merra2_v10m`, `merra2_ps` | global, land and ocean |
+
+```
+python scripts/ingest/nasa_grid.py list                       # variables, sources, units
+python scripts/ingest/nasa_grid.py inspect gldas_evap         # check variable name and units in a real granule
+python scripts/ingest/nasa_grid.py run --dry-run              # count granules still to process
+python scripts/ingest/nasa_grid.py run gldas_evap gldas_precip gldas_tair gldas_soilmoist_0_10 gldas_swe gldas_rootmoist gldas_soilmoist_10_40 gldas_snowdepth gldas_skin_temp gldas_potevap gldas_swdown gldas_wind
+python scripts/ingest/nasa_grid.py run imerg_precip
+python scripts/ingest/nasa_grid.py run merra2_t2m merra2_ts merra2_qv2m merra2_tqv merra2_u10m merra2_v10m merra2_ps
+python scripts/ingest/nasa_grid.py assemble                   # monthly slices -> one CSV per variable
+python scripts/ingest/nasa_grid.py check --lat 50.5 --lon 30.5
+```
+
+The three `run` commands can be started in separate terminals (one per product). Variables of one product are read from each granule in a single pass. Finished months are skipped, so an interrupted run continues where it stopped. Network errors are retried with a growing pause.
+
+Output in `data/nasa_grid/`:
+
+- `parts/<variable>/YYYY-MM.csv` (`lat,lon,value`) and `parts/<variable>/valid_frac.csv`: intermediate monthly slices.
+- `processed/<variable>.csv` (`date,lat,lon,value,valid_frac`): long format, `date` is the first day of the month, `lat`/`lon` are cell centers (integer + 0.5). Cells without data are omitted, there are no NaN rows. All 20 files take about 7 GB.
+
+Regridding: each source cell goes to the 1 degree cell that contains its center and cells are averaged with weight `cos(latitude)`. `valid_frac` is the share of the cell's area covered by valid source data; cells below 0.5 are dropped. Units are converted to `mm/month` (precipitation, evapotranspiration), `degC` (temperatures) or kept as in the source (see `list`).
+
+Analysis: `notebooks/01_nasa_grid_overview.ipynb` (integrity, coverage, global and latitude-band trends, per-cell trend maps, cross-checks between products); its figures are saved to `docs/figures/nasa_grid/`.
+
+Known data caveats:
+
+- IMERG has 309 of 312 months: 2025-10 to 2025-12 are not available (the series ends in 2025-09). 790 IMERG cells also have gaps in some months (not investigated). GLDAS and MERRA-2 have all 312 months.
+- The MERRA-2 grid (0.5 x 0.625 deg) does not nest in 1 degree cells, so assigning by cell center shifts the averaging by up to about 0.25 deg. GLDAS and IMERG nest exactly.
+- GLDAS has no data south of 60S, and its variables do not share one land mask: 15,332 cells for `gldas_tair`, `gldas_precip`, `gldas_swdown`, `gldas_wind` against 15,180 for the others. Use the common mask when comparing GLDAS variables.
+- Open, not yet explained: several GLDAS series (root-zone moisture, potential evaporation, shortwave radiation, wind) show a step around 2010-2011, which looks like a change in model inputs rather than climate. The land-mean air-temperature trend of GLDAS (about +0.6 degC/decade) is roughly twice that of MERRA-2 (about +0.26 degC/decade) although their annual anomalies correlate (r about 0.7). `gldas_swe` and `gldas_snowdepth` take non-physical values over ice sheets (Greenland). Check these before interpreting trends of those variables.

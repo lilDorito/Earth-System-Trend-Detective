@@ -122,6 +122,12 @@ function Earth({ texture, onPick, onHover }: EarthProps) {
 function Marker({ lat, lon }: LatLon) {
   const group = useRef<Group>(null);
   const pulse = useRef<Mesh<BufferGeometry, MeshBasicMaterial>>(null);
+  const position = latLonToVector(lat, lon, 1.0006);
+
+  // flat discs lying on the surface: no height above the ground, so the point cannot drift against the map
+  useEffect(() => {
+    group.current?.lookAt(position.clone().multiplyScalar(2));
+  }, [position]);
 
   useFrame(({ clock, camera }) => {
     // keep the same size on screen at any zoom
@@ -132,16 +138,15 @@ function Marker({ lat, lon }: LatLon) {
     pulse.current.material.opacity = 0.5 * (1 - t);
   });
 
-  const position = latLonToVector(lat, lon, 1.005);
   return (
     <group ref={group} position={position}>
       <mesh>
-        <sphereGeometry args={[0.009, 16, 16]} />
-        <meshBasicMaterial color="#fbbf24" toneMapped={false} />
+        <circleGeometry args={[0.009, 24]} />
+        <meshBasicMaterial color="#fbbf24" toneMapped={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
       </mesh>
       <mesh ref={pulse}>
-        <sphereGeometry args={[0.009, 16, 16]} />
-        <meshBasicMaterial color="#fbbf24" transparent depthWrite={false} toneMapped={false} />
+        <circleGeometry args={[0.009, 24]} />
+        <meshBasicMaterial color="#fbbf24" transparent depthWrite={false} toneMapped={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
       </mesh>
     </group>
   );
@@ -217,7 +222,7 @@ export default function GlobeCanvas({
           autoRotate={autoRotate}
           autoRotateSpeed={0.4}
         />
-        <MapOverlay labels={labels} onPick={onPick} />
+        <MapOverlay labels={labels} onPick={onPick} marker={marker} />
       </Canvas>
       <div ref={labels} className="pointer-events-none absolute inset-0 overflow-hidden [contain:strict]" />
       <div

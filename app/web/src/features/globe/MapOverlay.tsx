@@ -9,9 +9,9 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { loadCities, loadCountries, type City, type Countries } from "./geodata";
 
 const COUNTRY_CLASS =
-  "absolute left-0 top-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-white/75 invisible [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)]";
+  "absolute left-0 top-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-white/75 invisible select-none [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)]";
 const CITY_CLASS =
-  "absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap text-[12px] text-white invisible pointer-events-auto cursor-pointer transition-colors hover:text-primary [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)]";
+  "absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap text-[12px] text-white invisible select-none pointer-events-auto cursor-pointer transition-colors hover:text-primary [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)]";
 const DOT_CLASS = "size-[5px] shrink-0 rounded-full bg-white ring-1 ring-black/60";
 const CAPITAL_DOT_CLASS = "size-[7px] shrink-0 rounded-full border-[1.5px] border-white bg-black/40 ring-1 ring-black/60";
 
@@ -24,13 +24,13 @@ const cityThreshold = (distance: number) => (distance > 2.4 ? Infinity : 8e6 * M
 // smallest country area (steradians) labelled at a given zoom
 const areaThreshold = (distance: number) => 0.004 * Math.max((distance - 1) / 1.9, 0) ** 2.5;
 
-function Borders({ positions, width, opacity }: { positions: Float32Array; width: number; opacity: number }) {
+function Borders({ positions, width, opacity, color = 0xffffff }: { positions: Float32Array; width: number; opacity: number; color?: number }) {
   const size = useThree((s) => s.size);
   const line = useMemo(() => {
     const geometry = new LineSegmentsGeometry().setPositions(positions);
-    const material = new LineMaterial({ color: 0xffffff, linewidth: width, transparent: true, opacity, depthWrite: false });
+    const material = new LineMaterial({ color, linewidth: width, transparent: true, opacity, depthWrite: false });
     return new LineSegments2(geometry, material);
-  }, [positions, width, opacity]);
+  }, [positions, width, opacity, color]);
 
   useEffect(() => {
     line.material.resolution.set(size.width, size.height);
@@ -87,7 +87,8 @@ function createLabel(text: string, className: string, dotClass?: string) {
 
 export type PickHandler = (lat: number, lon: number, name?: string) => void;
 
-function Labels({ countries, cities, container, onPick }: {
+function Labels({ countries, cities, container, onPick, marker }: {
+  marker?: { lat: number; lon: number } | null;
   countries: Countries;
   cities: City[];
   container: RefObject<HTMLDivElement | null>;
@@ -137,6 +138,20 @@ function Labels({ countries, cities, container, onPick }: {
     void document.fonts.ready.then(measure);
     return () => root.replaceChildren();
   }, [countries, cities, container, canvas, onPick]);
+
+  // the picked city's dot turns into the yellow marker, drawn above the label layer
+  useEffect(() => {
+    for (const { city, el } of cityLabels.current) {
+      const dot = el.firstElementChild as HTMLElement | null;
+      if (!dot) continue;
+      const on = !!marker && Math.abs(city.lat - marker.lat) < 1e-4 && Math.abs(city.lon - marker.lon) < 1e-4;
+      dot.style.background = on ? "#fbbf24" : "";
+      dot.style.borderColor = on ? "#fbbf24" : "";
+      dot.style.transform = on ? "scale(1.6)" : "";
+      dot.style.boxShadow = on ? "0 0 0 3px rgba(251,191,36,0.35)" : "";
+      el.style.zIndex = on ? "10" : "";
+    }
+  }, [marker, cities, countries]);
 
   useFrame(({ camera, size }) => {
     // matrices are normally refreshed during render, i.e. after this runs; without this labels trail a frame
@@ -194,9 +209,9 @@ function Labels({ countries, cities, container, onPick }: {
   return null;
 }
 
-type MapOverlayProps = { labels: RefObject<HTMLDivElement | null>; onPick?: PickHandler };
+type MapOverlayProps = { labels: RefObject<HTMLDivElement | null>; onPick?: PickHandler; marker?: { lat: number; lon: number } | null };
 
-export default function MapOverlay({ labels, onPick }: MapOverlayProps) {
+export default function MapOverlay({ labels, onPick, marker }: MapOverlayProps) {
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
   const [countries, setCountries] = useState<Countries | null>(null);
@@ -214,9 +229,9 @@ export default function MapOverlay({ labels, onPick }: MapOverlayProps) {
   if (!countries) return null;
   return (
     <>
-      <Borders positions={countries.coasts} width={1} opacity={0.35} />
-      <Borders positions={countries.borders} width={1.6} opacity={0.7} />
-      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} />}
+      <Borders positions={countries.coasts} width={1} opacity={0.5} />
+      <Borders positions={countries.borders} width={1.3} opacity={0.8} />
+      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} marker={marker} />}
     </>
   );
 }

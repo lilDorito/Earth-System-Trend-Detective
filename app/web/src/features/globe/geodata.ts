@@ -25,8 +25,8 @@ export type Countries = {
   labels: CountryLabel[];
 };
 
-const LINE_RADIUS = 1.0008;
-const LABEL_RADIUS = 1.002;
+const LINE_RADIUS = 1.0006;
+const LABEL_RADIUS = 1.0006;
 const MAX_STEP_DEG = 1;
 
 const CRIMEA: [number, number] = [34.2, 45.3];

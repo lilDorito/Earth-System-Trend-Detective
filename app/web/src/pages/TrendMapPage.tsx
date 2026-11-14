@@ -10,7 +10,7 @@ import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
 import RegionPanel from "@/features/trendmap/RegionPanel";
 import TimelineBar from "@/features/trendmap/TimelineBar";
-import { buildTrendCanvas, FRAME_MAX } from "@/features/trendmap/trendLayer";
+import { buildFrameCanvas, buildTrendCanvas } from "@/features/trendmap/trendLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
@@ -41,7 +41,7 @@ export default function TrendMapPage() {
       const index = s.frames.years.indexOf(s.frameYear);
       if (index < 0) return null;
       const { n_lat, n_lon, frames } = s.frames;
-      return buildTrendCanvas({ n_lat, n_lon, slope: frames[index], sig: [] }, false, FRAME_MAX);
+      return buildFrameCanvas(`${s.frames.start}-${s.frames.end}-${index}`, { n_lat, n_lon, slope: frames[index], sig: [] });
     }
     return s.grid ? buildTrendCanvas(s.grid, s.onlySignificant) : null;
   }, [s.grid, s.frames, s.view, s.frameYear, s.showTrend, s.onlySignificant]);

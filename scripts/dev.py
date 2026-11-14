@@ -1,6 +1,4 @@
-# one command for API + web: python scripts/dev.py
-# API on API_PORT (default 5055), web on WEB_PORT (default 5173). Ctrl+C stops both.
-# 8000 is often blocked on Windows (WinError 10013), hence 5055.
+# API + web in one command; ports from API_PORT (5055, since 8000 is often blocked on Windows) and WEB_PORT
 
 import os
 import shutil

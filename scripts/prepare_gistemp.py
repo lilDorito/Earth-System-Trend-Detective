@@ -1,20 +1,12 @@
-"""Real global grid for the globe: NASA GISTEMP v4 (land + ocean, 2x2 degrees, monthly anomalies
-vs 1951-1980) -> annual means -> data/grid/annual.npz.
-
-    pip install netCDF4
-    python scripts/prepare_gistemp.py                 # downloads ~23 MB, then builds the grid
-    python scripts/prepare_gistemp.py --file D:\\Downloads\\gistemp1200_GHCNv4_ERSSTv5.nc.gz   (.nc or .nc.gz)
-    python scripts/prepare_gistemp.py --from-year 1950
-
-Values are temperature ANOMALIES in degC (not absolute temperature): trends are identical,
-the UI says so through the `label` stored in the npz.
-"""
+# NASA GISTEMP v4 monthly anomalies -> annual means -> data/grid/annual.npz (needs netCDF4)
+# python scripts/prepare_gistemp.py [--file path.nc(.gz)] [--from-year 1950]
 
 import argparse
 import gzip
 import shutil
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -101,8 +93,8 @@ def annual_means(years, months, data, from_year):
         if y < from_year or sel.sum() < 12:  # skip the current, incomplete year
             continue
         valid = np.isfinite(data[sel]).sum(axis=0)
-        with np.errstate(all="ignore"), __import__("warnings").catch_warnings():
-            __import__("warnings").simplefilter("ignore")
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             mean = np.where(valid >= 9, np.nanmean(data[sel], axis=0), np.nan)  # at least 9 of 12 months
         out_years.append(y)
         out.append(mean)
@@ -110,7 +102,7 @@ def annual_means(years, months, data, from_year):
 
 
 def fill_gaps(annual):
-    """Interpolate missing years per cell; cells with too little data take the nearest valid cell."""
+    # missing years are interpolated; cells with too little data copy the nearest valid cell
     from scipy.ndimage import distance_transform_edt
 
     n = annual.shape[0]
@@ -128,7 +120,7 @@ def fill_gaps(annual):
 
 
 def to_pole_to_pole(annual, lat):
-    """GISTEMP rows are -89..89: resample to -90..90 (edge rows are repeated)."""
+    # GISTEMP rows are -89..89, the globe wants -90..90
     from scipy.interpolate import interp1d
 
     f = interp1d(lat, annual, axis=1, bounds_error=False, fill_value=(annual[:, 0], annual[:, -1]))

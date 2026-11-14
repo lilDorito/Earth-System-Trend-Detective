@@ -14,7 +14,7 @@ MIN_GROUP = 6  # months needed on each side of the event
 
 
 def _lag1(x: np.ndarray) -> float:
-    """Lag-1 autocorrelation, positive part only (negative would inflate the sample size)."""
+    # positive part only, a negative value would inflate the sample size
     if len(x) < 4 or np.std(x) == 0:
         return 0.0
     r = float(np.corrcoef(x[:-1], x[1:])[0, 1])
@@ -31,12 +31,8 @@ def analyze_trend(
     deseasonalize: bool = True,
     alpha: float = 0.05,
 ) -> TrendResult:
-    """processed has columns time, value, climatology, anomaly (monthly).
-
-    Slope + CI: ordinary least squares (CI is optimistic because monthly data is autocorrelated).
-    Significance: Mann-Kendall with the Hamed-Rao autocorrelation correction on anomalies, or the
-    seasonal Mann-Kendall (period 12) when the seasonal cycle is kept. Sen's slope comes from the same test.
-    """
+    # slope and CI from OLS (CI is optimistic on autocorrelated data); significance and Sen's slope
+    # from Hamed-Rao Mann-Kendall on anomalies, or seasonal Mann-Kendall when the cycle is kept
     df = processed.dropna(subset=["value"]).reset_index(drop=True)
     if len(df) < MIN_POINTS:
         raise ValueError(f"Need at least {MIN_POINTS} months of data, got {len(df)}")
@@ -113,12 +109,8 @@ def analyze_event(
     deseasonalize: bool = True,
     alpha: float = 0.05,
 ) -> EventResult:
-    """Before vs after the event date: Welch t-test on monthly values (or anomalies).
-
-    Monthly data is autocorrelated, so each group's sample size is shrunk to an effective one,
-    n_eff = n * (1 - r1) / (1 + r1), before the test. Without that the p-value is far too optimistic.
-    With deseasonalize=True the values are anomalies, so the means are anomaly means and pct_change is None.
-    """
+    # Welch t-test with an effective sample size n * (1 - r1) / (1 + r1) per side;
+    # on anomalies the means are anomaly means, so pct_change is None
     df = processed.dropna(subset=["value"])
     col = "anomaly" if deseasonalize else "value"
     cut = pd.Timestamp(event_date, tz=df["time"].dt.tz)

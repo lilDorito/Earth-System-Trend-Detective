@@ -25,6 +25,7 @@ type AppState = {
 
   setVariable: (key: string) => void;
   setLocation: (location: Location, regionName?: string | null) => void;
+  clearLocation: () => void;
   pickRegion: (region: Region) => void;
   setRegionType: (type: string | null) => void;
   setPeriod: (start: string, end: string) => void;
@@ -56,6 +57,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setVariable: (variableKey) => set({ variableKey, error: null }),
   setLocation: (location, regionName = null) => set({ location, regionName, error: null }),
+  clearLocation() {
+    runId++;
+    set({ location: null, regionName: null, response: null, loading: false, error: null });
+  },
   pickRegion: (region) =>
     set({
       location: region.location,

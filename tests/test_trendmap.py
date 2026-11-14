@@ -1,8 +1,11 @@
 # grid trend stats and /api/trendmap
 
+import json
+
 import numpy as np
 from fastapi.testclient import TestClient
 
+from app.api import trendmap
 from app.api.main import app
 from src import gridtrends
 
@@ -62,12 +65,8 @@ def test_api_period_validation():
     assert client.get("/api/trendmap/grid", params={"start": 1900, "end": 2020}).status_code == 422
 
 
+# Hamed-Rao gives NaN p on some smooth series, the API must fall back
 def test_every_demo_cell_has_finite_stats():
-    """Hamed-Rao gives NaN p on some smooth series; the API must fall back, never return NaN."""
-    import json
-
-    from app.api import trendmap
-
     ds = trendmap._ds()
     for i in range(0, len(ds.lat), 4):
         for j in range(0, len(ds.lon), 9):
@@ -77,32 +76,25 @@ def test_every_demo_cell_has_finite_stats():
     json.dumps(client.get("/api/trendmap/summary").json(), allow_nan=False)
 
 
-def test_frames_endpoint(client=None):
-    from fastapi.testclient import TestClient
-    from app.api.main import app
-
-    r = TestClient(app).get("/api/trendmap/frames?start=2005&end=2020")
+def test_frames_endpoint():
+    r = client.get("/api/trendmap/frames?start=2005&end=2020")
     assert r.status_code == 200
     d = r.json()
     assert d["years"] == list(range(2005, 2021))
     assert len(d["frames"]) == 16 and len(d["frames"][0]) == d["n_lat"] * d["n_lon"]
     assert d["baseline"] == [2005, 2009]
     assert abs(d["global_mean"][0]) < 0.3  # first years are the baseline
-    assert TestClient(app).get("/api/trendmap/frames?start=2010&end=2012").status_code == 422
+    assert client.get("/api/trendmap/frames?start=2010&end=2012").status_code == 422
 
 
 def test_region_endpoint():
-    from fastapi.testclient import TestClient
-    from app.api.main import app
-
-    c = TestClient(app)
-    r = c.get("/api/trendmap/region?name=ukraine&start=2000&end=2024")
+    r = client.get("/api/trendmap/region?name=ukraine&start=2000&end=2024")
     assert r.status_code == 200
     d = r.json()
     assert d["n_cells"] > 4 and len(d["years"]) == len(d["stripes"]) == 25
     assert abs(sum(d["stripes"])) < 0.05  # stripes are deviations from the period mean
     assert d["trend"] in ("increasing", "decreasing", "no trend")
-    arctic = c.get("/api/trendmap/region?name=arctic&start=2000&end=2024").json()
-    tropics = c.get("/api/trendmap/region?name=tropics&start=2000&end=2024").json()
+    arctic = client.get("/api/trendmap/region?name=arctic&start=2000&end=2024").json()
+    tropics = client.get("/api/trendmap/region?name=tropics&start=2000&end=2024").json()
     assert arctic["slope_decade"] > tropics["slope_decade"]  # Arctic amplification in the demo field
-    assert c.get("/api/trendmap/region?name=mars").status_code == 404
+    assert client.get("/api/trendmap/region?name=mars").status_code == 404

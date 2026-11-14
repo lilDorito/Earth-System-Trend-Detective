@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import { REGION_NAMES, shortRegionLabel } from "@/api/regions";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelSection } from "@/components/ui/panel";
@@ -14,7 +15,6 @@ import { formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import TrendChart from "./TrendChart";
-import { REGION_NAMES, shortRegionLabel } from "@/api/regions";
 import { FRAME_MAX, MAX_TREND, TREND_GRADIENT } from "./trendLayer";
 
 const isPhone = () => window.matchMedia("(max-width: 639px)").matches;

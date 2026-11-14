@@ -11,8 +11,8 @@ import { useAppStore } from "@/store/useAppStore";
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 export default function ExplorerPage() {
-  const { location, focus, setLocation } = useAppStore(
-    useShallow((s) => ({ location: s.location, focus: s.focus, setLocation: s.setLocation })),
+  const { location, focus, setLocation, clearLocation } = useAppStore(
+    useShallow((s) => ({ location: s.location, focus: s.focus, setLocation: s.setLocation, clearLocation: s.clearLocation })),
   );
   const texture = useEarthTexture();
 
@@ -24,8 +24,9 @@ export default function ExplorerPage() {
           marker={location && locationCenter(location)}
           focus={focus}
           autoRotate={!location}
-          hint="Drag to rotate, click to pick a place"
+          hint="Drag to rotate, click to pick a place, right-click to clear"
           onPick={(lat, lon, name) => setLocation({ type: "point", lat: round(lat), lon: round(lon) }, name ?? null)}
+          onClear={clearLocation}
         />
       </section>
 

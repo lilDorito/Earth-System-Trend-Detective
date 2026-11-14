@@ -48,7 +48,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   loading: false,
   error: null,
 
-  showTrend: true,
+  showTrend: false,
   onlySignificant: false,
   view: "trend",
   frameYear: 0,

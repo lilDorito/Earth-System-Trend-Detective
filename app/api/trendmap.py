@@ -1,5 +1,4 @@
-# global trend map endpoints for the globe layer: /api/trendmap/*
-# every endpoint takes an optional year range (start, end); default = the whole record
+# global trend map endpoints, each takes an optional year range (default: the whole record)
 
 from functools import lru_cache
 
@@ -24,12 +23,8 @@ def _nearest(axis: np.ndarray, value: float, circular: bool) -> int:
     return int(diff.argmin())
 
 
+# Hamed-Rao Mann-Kendall + Sen line; falls back to the plain test when Hamed-Rao gives p = NaN
 def _summary(values: np.ndarray):
-    """Hamed-Rao modified Mann-Kendall (autocorrelation-corrected) + Sen line.
-
-    On strongly autocorrelated series Hamed-Rao can produce a negative variance (p = NaN);
-    then fall back to the plain Mann-Kendall test (res.corrected is False).
-    """
     with np.errstate(invalid="ignore"):
         res = mk.hamed_rao_modification_test(values)
     corrected = bool(np.isfinite(res.p))
@@ -62,17 +57,15 @@ def _slice(start: int, end: int) -> np.ndarray:
 
 @lru_cache(maxsize=32)
 def _grid(start: int, end: int):
-    """(slope per decade, significant mask at FDR 5%) for the year range."""
     slope, _p, _q, significant = gridtrends.compute_grid(_ds().t2m[_slice(start, end)])
     return slope, significant
 
 
-BASELINE_YEARS = 5  # anomalies are measured against the mean of the first years of the period
+BASELINE_YEARS = 5  # anomalies are relative to the mean of the first years of the period
 
 
 @lru_cache(maxsize=8)
 def _frames(start: int, end: int):
-    """Annual anomaly maps (year minus baseline mean) + global mean anomaly per year."""
     ds = _ds()
     data = ds.t2m[_slice(start, end)].astype(np.float64)
     n_base = min(BASELINE_YEARS, max(1, data.shape[0] // 2))
@@ -82,7 +75,6 @@ def _frames(start: int, end: int):
 
 @router.get("/frames")
 def frames(start: int | None = None, end: int | None = None):
-    """One anomaly map per year of the period (for the timeline slider). Cached on the server and in the browser."""
     start, end = _range(start, end)
     anomaly, mean, n_base = _frames(start, end)
     return {
@@ -109,7 +101,6 @@ REGIONS = {
 
 @router.get("/region")
 def region(name: str, start: int | None = None, end: int | None = None):
-    """Area-weighted regional mean vs the global mean: trend tests, ratio, warming stripes."""
     if name not in REGIONS:
         raise HTTPException(404, f"Unknown region. Choose one of: {', '.join(REGIONS)}")
     start, end = _range(start, end)
@@ -119,16 +110,17 @@ def region(name: str, start: int | None = None, end: int | None = None):
     cell = (ds.lat[:, None] >= south) & (ds.lat[:, None] <= north) & (ds.lon[None, :] >= west) & (ds.lon[None, :] <= east)
     if not cell.any():
         raise HTTPException(422, "The grid has no cells inside this region")
-    w = np.cos(np.deg2rad(ds.lat))[:, None] * cell
+    area = np.cos(np.deg2rad(ds.lat))[:, None]
+    w = area * cell
     data = ds.t2m[mask].astype(np.float64)
-    mean = (data * w[None]).sum(axis=(1, 2)) / w.sum() / 1.0
+    mean = (data * w[None]).sum(axis=(1, 2)) / w.sum()
     glob = gridtrends.global_mean_series(ds.t2m[mask], ds.lat).astype(np.float64)
 
     res, fitted, corrected = _summary(mean)
-    gres, _gfit, _gcorr = _summary(glob)
+    gres, *_ = _summary(glob)
     slope_decade, global_decade = float(res.slope * 10), float(gres.slope * 10)
-    slope_cells, _sig = _grid(start, end)
-    warming_share = float((np.cos(np.deg2rad(ds.lat))[:, None] * cell * (slope_cells > 0)).sum() / w.sum())
+    slope_cells, _ = _grid(start, end)
+    warming_share = float((w * (slope_cells > 0)).sum() / w.sum())
     return {
         "name": name,
         "label": label,
@@ -169,7 +161,6 @@ def meta():
 
 @router.get("/grid")
 def grid(start: int | None = None, end: int | None = None):
-    """Trend per cell in °C/decade and FDR-significance flag. Order: latitude ascending, then longitude."""
     start, end = _range(start, end)
     slope, sig = _grid(start, end)
     return {
@@ -185,7 +176,6 @@ def grid(start: int | None = None, end: int | None = None):
 
 @router.get("/summary")
 def summary(start: int | None = None, end: int | None = None):
-    """Global analytics for the period: mean series + trend test, area shares, trend by latitude."""
     start, end = _range(start, end)
     ds = _ds()
     mask = _slice(start, end)
@@ -225,7 +215,6 @@ def summary(start: int | None = None, end: int | None = None):
 
 @router.get("/global-mean")
 def global_mean(start: int | None = None, end: int | None = None):
-    """Global mean series + trend test (the shape the web client expects)."""
     s = summary(start, end)
     return {k: s[k] for k in ("years", "slope_decade", "trend", "p", "fitted")} | {"values": s["mean"]}
 
@@ -237,7 +226,6 @@ def point(
     start: int | None = None,
     end: int | None = None,
 ):
-    """Annual series and trend tests for the grid cell nearest to the point, over the year range."""
     start, end = _range(start, end)
     ds = _ds()
     i, j = _nearest(ds.lat, lat, False), _nearest(ds.lon, lon, True)

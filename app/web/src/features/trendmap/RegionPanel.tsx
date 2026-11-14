@@ -18,7 +18,7 @@ import { trendColor } from "./trendLayer";
 const shortName = (region: TrendRegion) => region.label.split(" (")[0];
 const rgb = (c: number[]) => `rgb(${c.map(Math.round).join(",")})`;
 
-/** one bar per year, blue = cooler than the period mean, red = warmer */
+// one bar per year, colored by its deviation from the period mean
 function Stripes({ region }: { region: TrendRegion }) {
   const peak = Math.max(0.1, ...region.stripes.map((v) => Math.abs(v ?? 0)));
   return (

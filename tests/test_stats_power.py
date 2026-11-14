@@ -1,4 +1,4 @@
-# real stats on synthetic data with a known answer + POWER parsing and the live path with a fake HTTP layer
+# stats on series with a known answer, POWER parsing, and the live path with a fake HTTP layer
 
 from datetime import date
 
@@ -43,7 +43,7 @@ def test_event_needs_data_on_both_sides():
 
 def test_trend_known_slope():
     rng = np.random.default_rng(2)
-    y = 0.03 * np.arange(300) / 12 * 10 / 10 + rng.normal(0, 0.3, 300)  # 0.03 per year = 0.3 per decade
+    y = 0.03 * np.arange(300) / 12 + rng.normal(0, 0.3, 300)  # 0.3 per decade
     r = stats.analyze_trend(_frame(y), "°C")
     assert 0.2 < r.slope_per_decade < 0.4 and r.significant and r.mk_trend == "increasing"
     assert r.ci_low < r.slope_per_decade < r.ci_high

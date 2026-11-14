@@ -48,7 +48,7 @@ export const httpApi = {
   trendGrid: () => request<TrendGrid>("/api/trendmap/grid"),
   trendGlobalMean: () => request<GlobalMean>("/api/trendmap/global-mean"),
   trendFrames: () => request<TrendFrames>("/api/trendmap/frames"),
-  trendRegion: (name: string) => request<TrendRegion>(`/api/trendmap/region?name=${name}`),
+  trendRegion: (name: string) => request<TrendRegion>(`/api/trendmap/region?name=${encodeURIComponent(name)}`),
   trendPoint: (lat: number, lon: number) =>
     request<TrendPoint>(`/api/trendmap/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`),
   analyze: (body: AnalyzeRequest) =>

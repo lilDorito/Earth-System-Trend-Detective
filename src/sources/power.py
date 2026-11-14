@@ -1,5 +1,4 @@
-# NASA POWER monthly point time series (no token needed). Runs live, DATA_MODE=live.
-# docs: https://power.larc.nasa.gov/docs/services/api/temporal/monthly/
+# NASA POWER monthly point series, no token: https://power.larc.nasa.gov/docs/services/api/temporal/monthly/
 
 import json
 from datetime import date, datetime, timezone
@@ -10,6 +9,7 @@ import requests
 from ..cache import cache_key
 from ..config import settings
 from ..contracts import BBox, Location, Point, Series, SeriesMeta, VariableInfo
+from ..units import convert
 from .base import SourceError
 
 URL = "https://power.larc.nasa.gov/api/temporal/monthly/point"
@@ -27,9 +27,6 @@ class PowerPointSource:
         df = df[(df["time"] >= pd.Timestamp(start.year, start.month, 1, tz="UTC")) & (df["time"] <= pd.Timestamp(end, tz="UTC"))]
         if df.empty:
             raise SourceError("POWER returned no data for this place and period")
-
-        from ..units import convert
-
         df = convert(df.reset_index(drop=True), variable.conversion)
         coords = payload.get("geometry", {}).get("coordinates", [lon, lat])
         meta = SeriesMeta(
@@ -50,7 +47,7 @@ class PowerPointSource:
 
 
 def parse_monthly(payload: dict, parameter: str) -> pd.DataFrame:
-    """POWER monthly JSON -> DataFrame[time, value]. Keys are YYYYMM, YYYY13 is the annual mean (dropped)."""
+    # keys are YYYYMM; month 13 is the annual mean
     try:
         raw = payload["properties"]["parameter"][parameter]
     except KeyError:

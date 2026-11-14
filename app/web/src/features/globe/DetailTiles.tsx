@@ -1,8 +1,8 @@
 // full-resolution 22.5° tiles loaded over the base texture when zoomed in
 
-import { useEffect, useReducer, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
-import { ImageBitmapLoader, SphereGeometry, SRGBColorSpace, Texture, type PerspectiveCamera } from "three";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { ImageBitmapLoader, SphereGeometry, SRGBColorSpace, Texture, Vector3, type PerspectiveCamera } from "three";
 import { vectorToLatLon } from "./geo";
 
 const SPAN = 22.5;
@@ -70,6 +70,8 @@ export default function DetailTiles() {
   const requested = useRef(new Set<string>());
   const candidate = useRef("");
   const lastCheck = useRef(0);
+  const checkedFrom = useMemo(() => new Vector3(), []);
+  const invalidate = useThree((s) => s.invalidate);
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   useFrame(({ camera, clock, gl, size }) => {
@@ -81,9 +83,12 @@ export default function DetailTiles() {
       cache.current.set(key, texture);
       rerender();
     }
+    // keep frames coming until uploads finish and the view has been checked where the camera stopped
+    if (pending.current.length || !checkedFrom.equals(camera.position) || candidate.current !== visible.join()) invalidate();
 
     if (clock.elapsedTime - lastCheck.current < CHECK_INTERVAL) return;
     lastCheck.current = clock.elapsedTime;
+    checkedFrom.copy(camera.position);
 
     const distance = camera.position.length();
     let keys: string[] = [];
@@ -117,6 +122,7 @@ export default function DetailTiles() {
           texture.anisotropy = 16;
           texture.needsUpdate = true;
           pending.current.push([key, texture]);
+          invalidate();
         });
       }
     }
@@ -127,7 +133,7 @@ export default function DetailTiles() {
       textures.delete(key);
       requested.current.delete(key);
     }
-  }, [visible]);
+  }, [visible, invalidate]);
 
   useEffect(() => {
     const textures = cache.current;

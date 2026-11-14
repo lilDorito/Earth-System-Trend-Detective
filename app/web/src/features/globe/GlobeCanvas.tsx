@@ -1,10 +1,12 @@
 // 3D globe shared by the explorer and the trend map
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
-import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type BufferGeometry, type Group, type Intersection, type Mesh, type MeshBasicMaterial, type Raycaster, type Texture } from "three";
+import { AnimatePresence, motion } from "framer-motion";
+import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import MapOverlay, { type PickHandler } from "./MapOverlay";
 import DetailTiles from "./DetailTiles";
 import { latLonToVector, vectorToLatLon } from "./geo";
@@ -25,8 +27,11 @@ type GlobeCanvasProps = {
   focus?: (LatLon & { id: number }) | null;
   autoRotate?: boolean;
   onPick?: PickHandler;
+  onClear?: () => void;
   hint?: string;
   detail?: boolean;
+  loading?: string | null;
+  children?: ReactNode;
 };
 
 const DRAG_THRESHOLD_PX = 4;
@@ -75,20 +80,22 @@ function ZoomFeel() {
 // fit the whole globe on narrow screens
 function FitCamera() {
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const aspect = useThree((s) => s.size.width / s.size.height);
 
   useEffect(() => {
     const fit = 1.3 / (Math.tan(((FOV / 2) * Math.PI) / 180) * aspect);
     const distance = Math.max(2.9, fit);
     if (Math.abs(camera.position.length() - distance) > 0.05) camera.position.setLength(distance);
-  }, [aspect, camera]);
+    invalidate();
+  }, [aspect, camera, invalidate]);
 
   return null;
 }
 
-type EarthProps = Pick<GlobeCanvasProps, "texture" | "onPick"> & { onHover: (point: LatLon | null) => void };
+type EarthProps = Pick<GlobeCanvasProps, "texture" | "onPick" | "onClear"> & { onHover: (point: LatLon | null) => void };
 
-function Earth({ texture, onPick, onHover }: EarthProps) {
+function Earth({ texture, onPick, onClear, onHover }: EarthProps) {
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     if (!onPick || e.delta > DRAG_THRESHOLD_PX) return;
     e.stopPropagation();
@@ -96,10 +103,17 @@ function Earth({ texture, onPick, onHover }: EarthProps) {
     onPick(lat, lon);
   };
 
+  const handleContextMenu = (e: ThreeEvent<MouseEvent>) => {
+    if (!onClear || e.delta > DRAG_THRESHOLD_PX) return;
+    e.stopPropagation();
+    onClear();
+  };
+
   return (
     <mesh
       raycast={raycastSphere}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       onPointerOver={() => onPick && (document.body.style.cursor = "crosshair")}
       onPointerMove={(e) => onHover(vectorToLatLon(e.point))}
       onPointerOut={() => {
@@ -119,42 +133,84 @@ function Earth({ texture, onPick, onHover }: EarthProps) {
   );
 }
 
-function Marker({ lat, lon }: LatLon) {
-  const group = useRef<Group>(null);
-  const pulse = useRef<Mesh<BufferGeometry, MeshBasicMaterial>>(null);
-  const position = latLonToVector(lat, lon, 1.0006);
+const SPIN_SPEED = 0.4;
+const IDLE_SECONDS = 30;
+const SPIN_FULL_AT = 2.6; // camera distance with full spin speed
+const SPIN_STOP_AT = 1.6; // and with none
 
-  // flat discs lying on the surface: no height above the ground, so the point cannot drift against the map
+type SpinControls = EventDispatcher<{ start: object; end: object }> & { autoRotate: boolean; autoRotateSpeed: number };
+
+// idle spin: stops on any drag or scroll, comes back after a quiet half minute, fades out when zoomed in
+function IdleSpin({ enabled }: { enabled: boolean }) {
+  const controls = useThree((s) => s.controls) as SpinControls | null;
+  const invalidate = useThree((s) => s.invalidate);
+  const lastInteraction = useRef(-Infinity);
+  const speed = useRef(0);
+
   useEffect(() => {
-    group.current?.lookAt(position.clone().multiplyScalar(2));
-  }, [position]);
+    if (!controls) return;
+    let timer = 0;
+    const interact = () => {
+      lastInteraction.current = performance.now();
+      speed.current = 0;
+      controls.autoRotate = false;
+      clearTimeout(timer);
+      // nothing renders while idle, so wake the loop when the spin may resume
+      timer = window.setTimeout(invalidate, IDLE_SECONDS * 1000 + 50);
+    };
+    controls.addEventListener("start", interact);
+    controls.addEventListener("end", interact);
+    return () => {
+      clearTimeout(timer);
+      controls.removeEventListener("start", interact);
+      controls.removeEventListener("end", interact);
+    };
+  }, [controls, invalidate]);
 
-  useFrame(({ clock, camera }) => {
-    // keep the same size on screen at any zoom
-    group.current?.scale.setScalar((camera.position.length() - 1) / 1.9);
-    if (!pulse.current) return;
-    const t = (clock.elapsedTime % 1.6) / 1.6;
-    pulse.current.scale.setScalar(1 + t * 2.5);
-    pulse.current.material.opacity = 0.5 * (1 - t);
+  useEffect(() => invalidate(), [enabled, invalidate]);
+
+  useFrame(({ camera }, delta) => {
+    if (!controls) return;
+    const idle = performance.now() - lastInteraction.current > IDLE_SECONDS * 1000;
+    const zoom = Math.min(1, Math.max(0, (camera.position.length() - SPIN_STOP_AT) / (SPIN_FULL_AT - SPIN_STOP_AT)));
+    const target = enabled && idle ? zoom : 0;
+    speed.current += (target - speed.current) * Math.min(1, delta * 1.5);
+    if (target === 0 && speed.current < 0.01) speed.current = 0;
+    controls.autoRotate = speed.current > 0;
+    controls.autoRotateSpeed = SPIN_SPEED * speed.current;
+    // the first spin steps fall below the controls' change threshold, so keep frames coming here
+    if (speed.current > 0 || target > 0) invalidate();
   });
 
-  return (
-    <group ref={group} position={position}>
-      <mesh>
-        <circleGeometry args={[0.009, 24]} />
-        <meshBasicMaterial color="#fbbf24" toneMapped={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
-      </mesh>
-      <mesh ref={pulse}>
-        <circleGeometry args={[0.009, 24]} />
-        <meshBasicMaterial color="#fbbf24" transparent depthWrite={false} toneMapped={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
-      </mesh>
-    </group>
-  );
+  return null;
+}
+
+// steps the resolution down when frames run slow; gaps between on-demand frames are ignored
+function AdaptiveResolution() {
+  const setDpr = useThree((s) => s.setDpr);
+  const levels = useMemo(() => [1, 1.5, 2].filter((d) => d <= Math.max(1, window.devicePixelRatio)), []);
+  const level = useRef(levels.length - 1);
+  const sample = useRef({ sum: 0, count: 0 });
+
+  useEffect(() => setDpr(levels[level.current]), [levels, setDpr]);
+
+  useFrame((_, delta) => {
+    if (delta > 0.1 || level.current === 0) return;
+    const s = sample.current;
+    s.sum += delta;
+    if (++s.count < 90) return;
+    if (s.sum / s.count > 1 / 45) setDpr(levels[--level.current]);
+    s.sum = s.count = 0;
+  });
+
+  return null;
 }
 
 function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
   const camera = useThree((s) => s.camera);
-  const flight = useRef<{ from: Vector3; rotation: Quaternion; distance: number; t: number } | null>(null);
+  const flight = useRef<{ from: Vector3; rotation: Quaternion; distance: number; t: number; started: boolean } | null>(null);
+
+  const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
     if (!target) return;
@@ -165,21 +221,45 @@ function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
       rotation: new Quaternion().setFromUnitVectors(from, to),
       distance: camera.position.length(),
       t: 0,
+      started: false,
     };
-  }, [target, camera]);
+    invalidate();
+  }, [target, camera, invalidate]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const f = flight.current;
     if (!f) return;
-    f.t = Math.min(1, f.t + delta / 1.1);
+    // the first on-demand frame can carry a long idle gap, so the flight starts counting from the next one
+    if (f.started) f.t = Math.min(1, f.t + delta / 1.1);
+    f.started = true;
     const ease = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (-2 * f.t + 2) ** 3 / 2;
     const step = new Quaternion().slerp(f.rotation, ease);
     camera.position.copy(f.from).applyQuaternion(step).multiplyScalar(f.distance);
     camera.lookAt(0, 0, 0);
     if (f.t === 1) flight.current = null;
+    else state.invalidate();
   });
 
   return null;
+}
+
+function Loading({ label }: { label: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="pointer-events-none absolute inset-0 flex items-center justify-center"
+    >
+      <div className="w-36 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+        <div className="mt-2 h-px overflow-hidden bg-border">
+          <div className="h-full w-2/5 animate-scan bg-primary" />
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function GlobeCanvas({
@@ -188,11 +268,18 @@ export default function GlobeCanvas({
   focus,
   autoRotate = false,
   onPick,
+  onClear,
   hint = "",
   detail = true,
+  loading = null,
+  children,
 }: GlobeCanvasProps) {
   const readout = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
+  const [mapReady, setMapReady] = useState(false);
+  // imagery, borders and labels appear together instead of popping in one by one
+  const ready = !!texture && mapReady;
+  const status = ready ? loading : "Loading globe";
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
   // written straight to the DOM so hovering does not re-render the scene
@@ -202,13 +289,19 @@ export default function GlobeCanvas({
 
   return (
     <>
-      <Canvas camera={{ position: [0, 0.6, 2.9], fov: FOV }} dpr={[1, 2]} className="absolute inset-0 touch-none">
+      <Canvas
+        camera={{ position: [0, 0.6, 2.9], fov: FOV }}
+        frameloop="demand"
+        className={cn("absolute inset-0 touch-none transition-opacity duration-500", !ready && "opacity-0")}
+      >
+        <AdaptiveResolution />
+        <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <Earth texture={texture} onPick={onPick} onHover={onHover} />
+        <Earth texture={texture} onPick={onPick} onClear={onClear} onHover={onHover} />
         {detail && texture && <DetailTiles />}
+        {children}
         <Atmosphere />
-        {marker && <Marker lat={marker.lat} lon={marker.lon} />}
         <FitCamera />
         <FlyTo target={focus} />
         <ZoomFeel />
@@ -219,12 +312,17 @@ export default function GlobeCanvas({
           rotateSpeed={0.5}
           minDistance={1.12}
           maxDistance={7}
-          autoRotate={autoRotate}
-          autoRotateSpeed={0.4}
         />
-        <MapOverlay labels={labels} onPick={onPick} marker={marker} />
+        <MapOverlay labels={labels} onPick={onPick} onClear={onClear} marker={marker} onReady={() => setMapReady(true)} />
       </Canvas>
-      <div ref={labels} className="pointer-events-none absolute inset-0 overflow-hidden [contain:strict]" />
+      <div
+        ref={labels}
+        className={cn(
+          "pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-500 [contain:strict]",
+          !ready && "opacity-0",
+        )}
+      />
+      <AnimatePresence>{status && <Loading key={status} label={status} />}</AnimatePresence>
       <div
         ref={readout}
         className="pointer-events-none absolute bottom-3 left-3 font-mono text-[11px] tabular-nums text-muted-foreground sm:bottom-4 sm:left-4"

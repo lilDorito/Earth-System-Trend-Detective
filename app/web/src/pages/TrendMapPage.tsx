@@ -4,13 +4,14 @@ import { useEffect, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { LoaderCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
 import RegionPanel from "@/features/trendmap/RegionPanel";
 import TimelineBar from "@/features/trendmap/TimelineBar";
-import { buildFrameCanvas, buildTrendCanvas } from "@/features/trendmap/trendLayer";
+import { bandColors, FRAME_MAX, MAX_TREND } from "@/features/trendmap/trendLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
@@ -22,12 +23,14 @@ export default function TrendMapPage() {
       frameYear: s.frameYear,
       region: s.region,
       showTrend: s.showTrend,
+      error: s.error,
       onlySignificant: s.onlySignificant,
       picked: s.picked,
       selected: s.selected,
       pointLoading: s.pointLoading,
       load: s.load,
       selectPoint: s.selectPoint,
+      clearSelection: s.clearSelection,
     })),
   );
 
@@ -35,17 +38,19 @@ export default function TrendMapPage() {
     void s.load();
   }, [s.load]);
 
-  const overlay = useMemo(() => {
+  const layer = useMemo(() => {
     if (!s.showTrend) return null;
     if (s.view === "years" && s.frames) {
-      const index = s.frames.years.indexOf(s.frameYear);
+      const { n_lat, n_lon, years, frames } = s.frames;
+      const index = years.indexOf(s.frameYear);
       if (index < 0) return null;
-      const { n_lat, n_lon, frames } = s.frames;
-      return buildFrameCanvas(`${s.frames.start}-${s.frames.end}-${index}`, { n_lat, n_lon, slope: frames[index], sig: [] });
+      return { nlat: n_lat, nlon: n_lon, values: frames[index], mask: null, max: FRAME_MAX };
     }
-    return s.grid ? buildTrendCanvas(s.grid, s.onlySignificant) : null;
+    if (!s.grid) return null;
+    const { n_lat, n_lon, slope, sig } = s.grid;
+    return { nlat: n_lat, nlon: n_lon, values: slope, mask: s.onlySignificant ? sig : null, max: MAX_TREND };
   }, [s.grid, s.frames, s.view, s.frameYear, s.showTrend, s.onlySignificant]);
-  const texture = useEarthTexture(overlay);
+  const texture = useEarthTexture();
 
   return (
     <div className="relative h-full overflow-hidden">
@@ -53,10 +58,14 @@ export default function TrendMapPage() {
         texture={texture}
         marker={s.picked}
         autoRotate={!s.picked}
-        hint="Click the globe to inspect a grid cell"
+        hint="Click to inspect a grid cell, right-click to clear"
         detail={!s.showTrend}
         onPick={(lat, lon) => void s.selectPoint(lat, lon)}
-      />
+        onClear={s.clearSelection}
+        loading={s.showTrend && !layer && !s.error ? "Loading trend data" : null}
+      >
+        {layer && texture && <FieldLayer earth={texture} colors={bandColors} {...layer} />}
+      </GlobeCanvas>
       <ControlPanel />
       <AnimatePresence>
         {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null} />}

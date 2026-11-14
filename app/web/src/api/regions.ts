@@ -1,4 +1,4 @@
-// preset regions for the trend map analytics (south, north, west, east)
+// trend map regions, mirror REGIONS in app/api/trendmap.py; bbox is south, north, west, east
 
 export const REGIONS = {
   ukraine: { label: "Ukraine", bbox: [44, 53, 22, 41] },

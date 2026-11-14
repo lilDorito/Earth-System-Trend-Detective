@@ -24,7 +24,7 @@ class GridDataset:
 
 
 def normalize(years, lat, lon, t2m):
-    """Latitude ascending, longitude wrapped to -180..180 and ascending."""
+    # latitude ascending, longitude wrapped to -180..180 and ascending
     lat_order = np.argsort(lat)
     lon_wrapped = ((lon + 180.0) % 360.0) - 180.0
     lon_order = np.argsort(lon_wrapped)
@@ -32,8 +32,7 @@ def normalize(years, lat, lon, t2m):
 
 
 def make_demo() -> GridDataset:
-    """Synthetic 2.5 degree field that looks like a real one: smooth regional trend patterns
-    (Arctic amplification, warm and cool blobs) and spatially correlated AR(1) noise."""
+    # synthetic 2.5 degree field: regional trend patterns plus spatially correlated AR(1) noise
     from scipy.ndimage import gaussian_filter
 
     rng = np.random.default_rng(42)
@@ -66,7 +65,6 @@ def make_demo() -> GridDataset:
 
 
 def load_grid(path: Path = GRID_FILE) -> GridDataset:
-    """Real annual means from data/grid/annual.npz (scripts/prepare_grid.py), else the synthetic demo."""
     if path.exists():
         with np.load(path) as f:
             years, lat, lon, t2m = normalize(f["years"], f["lat"], f["lon"], f["t2m"])
@@ -101,12 +99,9 @@ def _mann_kendall_block(x: np.ndarray):
     return sen, 2 * norm.sf(np.abs(z))
 
 
+# x: (years, lat, lon) -> Sen slope per year and an approximate autocorrelation-adjusted p
+# (simplified Hamed-Rao variance factor; single cells use pymannkendall in app/api/trendmap.py)
 def mann_kendall_grid(x: np.ndarray):
-    """x: (years, lat, lon). Returns Sen slope per year and an approximate autocorrelation-adjusted p-value.
-
-    Not identical to pymannkendall's Hamed-Rao p-value (simplified variance factor); the Sen slope is identical.
-    Use stats-grade tests (pymannkendall) for a single cell, see app/api/trendmap.py.
-    """
     shape = x.shape[1:]
     flat = x.reshape(x.shape[0], -1).astype(np.float32)
     sen = np.empty(flat.shape[1], dtype=np.float32)
@@ -117,7 +112,7 @@ def mann_kendall_grid(x: np.ndarray):
 
 
 def fdr_bh(p: np.ndarray) -> np.ndarray:
-    """Benjamini-Hochberg q-values, NaN stays NaN."""
+    # Benjamini-Hochberg q-values, NaN stays NaN
     flat = p.ravel()
     valid = np.isfinite(flat)
     q = np.full(flat.shape, np.nan)
@@ -133,14 +128,12 @@ def fdr_bh(p: np.ndarray) -> np.ndarray:
 
 
 def compute_grid(annual: np.ndarray):
-    """annual: (years, lat, lon) degC. Returns (slope per decade, p, q, significant mask at FDR ALPHA)."""
     sen, p = mann_kendall_grid(annual)
     q = fdr_bh(p)
     return sen * 10, p, q, np.isfinite(q) & (q < ALPHA)
 
 
 def global_mean_series(t2m: np.ndarray, lat: np.ndarray) -> np.ndarray:
-    """Area-weighted (cos lat) global mean per time step. t2m: (n, lat, lon)."""
     w = np.cos(np.deg2rad(lat))
     return (t2m * w[None, :, None]).sum(axis=(1, 2)) / (w.sum() * t2m.shape[2])
 

@@ -7,11 +7,13 @@ import { linearFit, rollingMean, round, twoSidedP } from "./stats";
 
 const STEP = 2.5;
 const FIRST_YEAR = 2000;
+const BASELINE_YEARS = 5;
 const YEARS = Array.from({ length: 25 }, (_, i) => FIRST_YEAR + i);
 const LATS = Array.from({ length: 180 / STEP + 1 }, (_, i) => -90 + i * STEP);
 const LONS = Array.from({ length: 360 / STEP }, (_, i) => -180 + i * STEP);
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
+const cosWeights = LATS.map((lat) => Math.cos(rad(lat)));
 const bump = (lat: number, lon: number, lat0: number, lon0: number, dLat: number, dLon: number) =>
   Math.exp(-(((lat - lat0) / dLat) ** 2) - ((lon - lon0) / dLon) ** 2);
 
@@ -103,11 +105,10 @@ export function trendGrid(): TrendGrid {
 export function trendGlobalMean(): GlobalMean {
   const field = getField().values;
   const cells = LATS.length * LONS.length;
-  const weights = LATS.map((lat) => Math.cos(rad(lat)));
-  const total = weights.reduce((a, b) => a + b, 0) * LONS.length;
+  const total = cosWeights.reduce((a, b) => a + b, 0) * LONS.length;
   const values = YEARS.map((_, k) => {
     let sum = 0;
-    for (let cell = 0; cell < cells; cell++) sum += field[k * cells + cell] * weights[Math.floor(cell / LONS.length)];
+    for (let cell = 0; cell < cells; cell++) sum += field[k * cells + cell] * cosWeights[Math.floor(cell / LONS.length)];
     return sum / total;
   });
   return { years: YEARS, values: values.map((v) => round(v)), ...summarize(values) };
@@ -130,11 +131,7 @@ export function trendPoint(lat: number, lon: number): TrendPoint {
   };
 }
 
-const BASELINE_YEARS = 5;
-
-const cosWeights = LATS.map((lat) => Math.cos(rad(lat)));
-
-/** one anomaly map per year, relative to the mean of the first years */
+// one anomaly map per year, relative to the mean of the first years
 export function trendFrames(): TrendFrames {
   const { values } = getField();
   const cells = LATS.length * LONS.length;
@@ -168,7 +165,6 @@ export function trendFrames(): TrendFrames {
   };
 }
 
-/** area-weighted regional mean vs the global mean */
 export function trendRegion(name: string): TrendRegion {
   if (!(name in REGIONS)) throw new Error(`Unknown region: ${name}`);
   const { label, bbox } = REGIONS[name as RegionName];

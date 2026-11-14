@@ -6,6 +6,7 @@ import { Vector3 } from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import { latLonToVector } from "./geo";
 import { loadCities, loadCountries, type City, type Countries } from "./geodata";
 
 const COUNTRY_CLASS =
@@ -14,6 +15,10 @@ const CITY_CLASS =
   "absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap text-[12px] text-white invisible select-none pointer-events-auto cursor-pointer transition-colors hover:text-primary [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)]";
 const DOT_CLASS = "size-[5px] shrink-0 rounded-full bg-white ring-1 ring-black/60";
 const CAPITAL_DOT_CLASS = "size-[7px] shrink-0 rounded-full border-[1.5px] border-white bg-black/40 ring-1 ring-black/60";
+
+const MARKER_CLASS = "pointer-events-none absolute left-0 top-0 z-10 size-[11px] invisible";
+const MARKER_PULSE_CLASS = "absolute inset-0 rounded-full bg-[#fbbf24] animate-marker-pulse";
+const MARKER_DOT_CLASS = "absolute inset-0 rounded-full border-2 border-black bg-[#fbbf24]";
 
 const MIN_FACING = 0.3;
 
@@ -24,26 +29,66 @@ const cityThreshold = (distance: number) => (distance > 2.4 ? Infinity : 8e6 * M
 // smallest country area (steradians) labelled at a given zoom
 const areaThreshold = (distance: number) => 0.004 * Math.max((distance - 1) / 1.9, 0) ** 2.5;
 
-function Borders({ positions, width, opacity, color = 0xffffff }: { positions: Float32Array; width: number; opacity: number; color?: number }) {
+type Chunk = { line: LineSegments2; center: Vector3; reach: number };
+
+const CHUNK_DEG = 30;
+
+// segments grouped by area, so lines behind the horizon or off screen are not processed at all
+function buildChunks(positions: Float32Array, material: LineMaterial): Chunk[] {
+  const cols = 360 / CHUNK_DEG;
+  const bins = new Map<number, number[]>();
+  for (let k = 0; k < positions.length; k += 6) {
+    const x = positions[k] + positions[k + 3];
+    const y = positions[k + 1] + positions[k + 4];
+    const z = positions[k + 2] + positions[k + 5];
+    const lat = (Math.asin(y / Math.hypot(x, y, z)) * 180) / Math.PI + 90;
+    const lon = (Math.atan2(z, x) * 180) / Math.PI + 180;
+    const bin = Math.min(180 / CHUNK_DEG - 1, Math.floor(lat / CHUNK_DEG)) * cols + Math.min(cols - 1, Math.floor(lon / CHUNK_DEG));
+    let list = bins.get(bin);
+    if (!list) bins.set(bin, (list = []));
+    for (let i = 0; i < 6; i++) list.push(positions[k + i]);
+  }
+  const point = new Vector3();
+  return [...bins.values()].map((list) => {
+    const center = new Vector3();
+    for (let k = 0; k < list.length; k += 3) center.add(point.fromArray(list, k).normalize());
+    center.normalize();
+    let reach = 0;
+    for (let k = 0; k < list.length; k += 3) reach = Math.max(reach, point.fromArray(list, k).normalize().angleTo(center));
+    const line = new LineSegments2(new LineSegmentsGeometry().setPositions(list), material);
+    return { line, center, reach };
+  });
+}
+
+function Borders({ positions, width, opacity }: { positions: Float32Array; width: number; opacity: number }) {
   const size = useThree((s) => s.size);
-  const line = useMemo(() => {
-    const geometry = new LineSegmentsGeometry().setPositions(positions);
-    const material = new LineMaterial({ color, linewidth: width, transparent: true, opacity, depthWrite: false });
-    return new LineSegments2(geometry, material);
-  }, [positions, width, opacity, color]);
+  const material = useMemo(
+    () => new LineMaterial({ color: 0xffffff, linewidth: width, transparent: true, opacity, depthWrite: false }),
+    [width, opacity],
+  );
+  const chunks = useMemo(() => buildChunks(positions, material), [positions, material]);
+  const view = useMemo(() => new Vector3(), []);
 
   useEffect(() => {
-    line.material.resolution.set(size.width, size.height);
-  }, [line, size]);
-  useEffect(
-    () => () => {
-      line.geometry.dispose();
-      line.material.dispose();
-    },
-    [line],
-  );
+    material.resolution.set(size.width, size.height);
+  }, [material, size]);
+  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => chunks.forEach((c) => c.line.geometry.dispose()), [chunks]);
 
-  return <primitive object={line} />;
+  useFrame(({ camera }) => {
+    const distance = camera.position.length();
+    const horizon = Math.acos(Math.min(1, 1 / distance));
+    view.copy(camera.position).normalize();
+    for (const { line, center, reach } of chunks) line.visible = center.angleTo(view) < reach + horizon;
+  });
+
+  return (
+    <>
+      {chunks.map(({ line }) => (
+        <primitive key={line.id} object={line} />
+      ))}
+    </>
+  );
 }
 
 type Label = {
@@ -87,18 +132,37 @@ function createLabel(text: string, className: string, dotClass?: string) {
 
 export type PickHandler = (lat: number, lon: number, name?: string) => void;
 
-function Labels({ countries, cities, container, onPick, marker }: {
-  marker?: { lat: number; lon: number } | null;
+type LatLon = { lat: number; lon: number };
+
+function Labels({ countries, cities, container, onPick, onClear, marker }: {
   countries: Countries;
   cities: City[];
   container: RefObject<HTMLDivElement | null>;
   onPick: RefObject<PickHandler | undefined>;
+  onClear: RefObject<(() => void) | undefined>;
+  marker?: LatLon | null;
 }) {
   const canvas = useThree((s) => s.gl.domElement);
   const countryLabels = useRef<Label[]>([]);
   const cityLabels = useRef<(Label & { city: City })[]>([]);
   const projected = useMemo(() => new Vector3(), []);
   const view = useMemo(() => new Vector3(), []);
+  const invalidate = useThree((s) => s.invalidate);
+  // camera matrix and screen size of the last layout; cleared whenever labels need a fresh pass
+  const laidOut = useRef<number[] | null>(null);
+  // the selected point lives in this layer too, so city dots can never cover it
+  const markerEl = useMemo(() => {
+    const el = document.createElement("div");
+    el.className = MARKER_CLASS;
+    for (const className of [MARKER_PULSE_CLASS, MARKER_DOT_CLASS]) {
+      const part = document.createElement("span");
+      part.className = className;
+      el.append(part);
+    }
+    return el;
+  }, []);
+  const markerAt = useMemo(() => (marker ? latLonToVector(marker.lat, marker.lon, 1) : null), [marker]);
+  const pickedCity = useRef<(Label & { city: City }) | null>(null);
 
   useEffect(() => {
     const root = container.current;
@@ -121,6 +185,10 @@ function Labels({ countries, cities, container, onPick, marker }: {
     for (const label of cityLabels.current) {
       const { city, el } = label;
       el.addEventListener("click", () => onPick.current?.(city.lat, city.lon, city.name));
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        onClear.current?.();
+      });
       // keep scroll-zoom working when the cursor is over a label
       el.addEventListener(
         "wheel",
@@ -132,30 +200,41 @@ function Labels({ countries, cities, container, onPick, marker }: {
       );
     }
     const all = [...countryLabels.current, ...cityLabels.current];
-    root.replaceChildren(...all.map((l) => l.el));
-    const measure = () => all.forEach((l) => (l.width = l.el.offsetWidth));
+    root.replaceChildren(...all.map((l) => l.el), markerEl);
+    const measure = () => {
+      all.forEach((l) => (l.width = l.el.offsetWidth));
+      laidOut.current = null;
+      invalidate();
+    };
     measure();
     void document.fonts.ready.then(measure);
     return () => root.replaceChildren();
-  }, [countries, cities, container, canvas, onPick]);
+  }, [countries, cities, container, canvas, onPick, onClear, invalidate, markerEl]);
 
-  // the picked city's dot turns into the yellow marker, drawn above the label layer
+  // a picked city keeps its label on screen, and the marker takes the place of its dot
   useEffect(() => {
-    for (const { city, el } of cityLabels.current) {
-      const dot = el.firstElementChild as HTMLElement | null;
-      if (!dot) continue;
-      const on = !!marker && Math.abs(city.lat - marker.lat) < 1e-4 && Math.abs(city.lon - marker.lon) < 1e-4;
-      dot.style.background = on ? "#fbbf24" : "";
-      dot.style.borderColor = on ? "#fbbf24" : "";
-      dot.style.transform = on ? "scale(1.6)" : "";
-      dot.style.boxShadow = on ? "0 0 0 3px rgba(251,191,36,0.35)" : "";
-      el.style.zIndex = on ? "10" : "";
-    }
-  }, [marker, cities, countries]);
+    const previous = pickedCity.current;
+    if (previous) (previous.el.firstElementChild as HTMLElement).style.visibility = "";
+    pickedCity.current =
+      (marker &&
+        cityLabels.current.find(
+          ({ city }) => Math.abs(city.lat - marker.lat) < 1e-4 && Math.abs(city.lon - marker.lon) < 1e-4,
+        )) ||
+      null;
+    if (pickedCity.current) (pickedCity.current.el.firstElementChild as HTMLElement).style.visibility = "hidden";
+    // restart the pulse for the new point
+    const pulse = markerEl.firstElementChild!;
+    pulse.replaceWith(pulse.cloneNode());
+    laidOut.current = null;
+    invalidate();
+  }, [marker, cities, countries, markerEl, invalidate]);
 
   useFrame(({ camera, size }) => {
     // matrices are normally refreshed during render, i.e. after this runs; without this labels trail a frame
     camera.updateMatrixWorld();
+    const key = [...camera.matrixWorld.elements, size.width, size.height];
+    if (laidOut.current?.every((v, i) => v === key[i])) return;
+    laidOut.current = key;
     const distance = camera.position.length();
     const fade = countryFade(distance);
     const minPopulation = cityThreshold(distance);
@@ -178,10 +257,26 @@ function Labels({ countries, cities, container, onPick, marker }: {
       show(label, String(alpha), `translate3d(${left.toFixed(1)}px, ${(y - 8).toFixed(1)}px, 0)`);
     };
 
+    if (markerAt) {
+      const facing = markerAt.dot(view);
+      projected.copy(markerAt).project(camera);
+      const x = ((projected.x + 1) / 2) * size.width - 5.5;
+      const y = ((1 - projected.y) / 2) * size.height - 5.5;
+      markerEl.style.visibility = facing > 0 ? "visible" : "hidden";
+      markerEl.style.opacity = String(Math.min(1, facing / 0.1));
+      markerEl.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+    } else {
+      markerEl.style.visibility = "hidden";
+    }
+
+    const picked = pickedCity.current;
+    if (picked) place(picked, true, 1);
+
     // labels already on screen keep their spot, so nothing flickers while the globe moves
     const placeStable = <T extends Label>(labels: T[], visible: (label: T, i: number) => boolean, opacity: number) => {
       const later: T[] = [];
       labels.forEach((label, i) => {
+        if ((label as Label) === picked) return;
         if (!visible(label, i)) return hide(label);
         if (label.shown) place(label, true, opacity);
         else later.push(label);
@@ -209,18 +304,33 @@ function Labels({ countries, cities, container, onPick, marker }: {
   return null;
 }
 
-type MapOverlayProps = { labels: RefObject<HTMLDivElement | null>; onPick?: PickHandler; marker?: { lat: number; lon: number } | null };
+type MapOverlayProps = {
+  labels: RefObject<HTMLDivElement | null>;
+  onPick?: PickHandler;
+  onClear?: () => void;
+  marker?: LatLon | null;
+  onReady?: () => void;
+};
 
-export default function MapOverlay({ labels, onPick, marker }: MapOverlayProps) {
+export default function MapOverlay({ labels, onPick, onClear, marker, onReady }: MapOverlayProps) {
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
+  const clearRef = useRef(onClear);
+  clearRef.current = onClear;
   const [countries, setCountries] = useState<Countries | null>(null);
   const [cities, setCities] = useState<City[] | null>(null);
 
+  const readyRef = useRef(onReady);
+  readyRef.current = onReady;
+
   useEffect(() => {
     let active = true;
-    void loadCountries().then((d) => active && setCountries(d));
-    void loadCities().then((d) => active && setCities(d));
+    void Promise.all([loadCountries(), loadCities()]).then(([countries, cities]) => {
+      if (!active) return;
+      setCountries(countries);
+      setCities(cities);
+      readyRef.current?.();
+    });
     return () => {
       active = false;
     };
@@ -231,7 +341,7 @@ export default function MapOverlay({ labels, onPick, marker }: MapOverlayProps) 
     <>
       <Borders positions={countries.coasts} width={1} opacity={0.5} />
       <Borders positions={countries.borders} width={1.3} opacity={0.8} />
-      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} marker={marker} />}
+      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} onClear={clearRef} marker={marker} />}
     </>
   );
 }

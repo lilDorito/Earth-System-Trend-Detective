@@ -27,6 +27,8 @@
 }
 
 @theme inline {
+  --animate-marker-pulse: marker-pulse 1.6s ease-out 3;
+  --animate-scan: scan 1.4s ease-in-out infinite;
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --color-background: var(--background);
@@ -82,4 +84,24 @@
 @utility scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+@keyframes marker-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(3.5);
+    opacity: 0;
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
 }

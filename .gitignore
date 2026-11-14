@@ -6,6 +6,8 @@ data/raw/*
 data/grid/*
 !data/grid/.gitkeep
 merra2/
+data/ncei/
+data/ocean/
 *.nc
 *.nc4
 

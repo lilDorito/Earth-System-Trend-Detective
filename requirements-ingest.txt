@@ -1,0 +1,9 @@
+numpy
+pandas
+pyarrow
+requests
+xarray
+netCDF4
+pyproj
+earthaccess
+copernicusmarine

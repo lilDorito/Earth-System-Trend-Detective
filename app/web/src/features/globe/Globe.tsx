@@ -1,12 +1,28 @@
-// Placeholder globe: click to pick a point (owner: frontend)
-// TODO: earth texture in public/textures/, country borders, region boxes, data overlay
+// Globe: click to pick a point (owner: frontend)
+// TODO: country borders, region boxes. The temperature trend layer lives in features/trendmap (/map)
 
+import { useEffect, useState } from "react";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
+import { SRGBColorSpace, TextureLoader, type Texture } from "three";
 import { useAppStore } from "@/store/useAppStore";
 import { latLonToVector, vectorToLatLon } from "./geo";
 
+function useEarthTexture() {
+  const [texture, setTexture] = useState<Texture | null>(null);
+  useEffect(() => {
+    const tex = new TextureLoader().load("/textures/earth.jpg", (t) => {
+      t.colorSpace = SRGBColorSpace;
+      t.anisotropy = 8;
+      setTexture(t);
+    });
+    return () => tex.dispose();
+  }, []);
+  return texture;
+}
+
 function Earth() {
+  const texture = useEarthTexture();
   const location = useAppStore((s) => s.location);
   const setLocation = useAppStore((s) => s.setLocation);
 
@@ -22,7 +38,8 @@ function Earth() {
     <>
       <mesh onClick={onClick}>
         <sphereGeometry args={[1, 64, 64]} />
-        <meshStandardMaterial color="#1e3a5f" wireframe />
+        {/* key: recreate the material once the map is loaded */}
+        <meshBasicMaterial key={texture ? "map" : "none"} map={texture ?? undefined} color={texture ? "#ffffff" : "#1e3a5f"} toneMapped={false} />
       </mesh>
       {marker && (
         <mesh position={marker}>

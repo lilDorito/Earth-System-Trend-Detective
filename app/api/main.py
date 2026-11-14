@@ -11,6 +11,7 @@ from src.config import settings
 from src.sources.base import SourceError
 
 from .schemas import AnalyzeRequest, AnalyzeResponse, SeriesPoint
+from .trendmap import router as trendmap_router
 
 app = FastAPI(title="Earth Trend Detective API", version="0.1")
 app.add_middleware(
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(trendmap_router)
 
 
 @app.get("/api/health")

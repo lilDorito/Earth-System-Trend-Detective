@@ -124,3 +124,44 @@ export type AnalyzeResponse = {
   series: SeriesPoint[];
   result: AnalysisResult;
 };
+
+// Trend map (src/gridtrends.py, app/api/trendmap.py)
+
+export type TrendMeta = {
+  demo: boolean; // true = synthetic field, data/grid/annual.npz is missing
+  variable: string;
+  units: string;
+  years: [number, number];
+  n_lat: number;
+  n_lon: number;
+};
+
+export type TrendGrid = {
+  n_lat: number;
+  n_lon: number;
+  slope: (number | null)[]; // °C per decade, latitude ascending then longitude
+  sig: number[]; // 1 = significant at FDR 5%
+};
+
+export type TrendPoint = {
+  lat: number;
+  lon: number;
+  years: number[];
+  values: (number | null)[];
+  fitted: (number | null)[];
+  rolling: (number | null)[];
+  trend: string;
+  p: number;
+  slope_decade: number;
+  significant_hr: boolean;
+  significant_fdr: boolean;
+};
+
+export type GlobalMean = {
+  years: number[];
+  values: (number | null)[];
+  fitted: (number | null)[];
+  trend: string;
+  p: number;
+  slope_decade: number;
+};

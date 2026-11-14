@@ -10,6 +10,8 @@ Pick any place on Earth and an Earth science variable (temperature, soil moistur
 
 Works worldwide; the demo cases focus on Ukraine.
 
+Plus a **global trend map** (`/map`): a spinning Earth with a per-cell temperature-trend layer (Sen's slope, FDR-significance mask) and click-to-chart with Hamed-Rao Mann-Kendall at any point.
+
 ## Quick start
 
 ```bash
@@ -27,6 +29,17 @@ npm run dev # http://localhost:5173, proxies /api to :8000
 
 Checks: `pytest` and `python scripts/run_smoke.py`.
 
+Port 8000 busy (Windows `WinError 10013`)? `uvicorn app.api.main:app --port 8765` and `VITE_API_TARGET=http://localhost:8765 npm run dev`.
+
+### Trend map data
+
+Without data the map runs on a synthetic field (badge "demo data, not real"). For real MERRA-2 T2M:
+
+```bash
+pip install xarray netcdf4 dask
+python scripts/prepare_grid.py path/to/merra2   # monthly *.nc4 -> data/grid/annual.npz (full years only)
+```
+
 ## Structure
 
 ```
@@ -41,11 +54,12 @@ src/
   units.py            raw -> display units
   processing.py       monthly resample, climatology, anomalies (stats)
   stats.py            trend + event analysis (stats, currently MOCK)
+  gridtrends.py       global grid: Mann-Kendall + Sen per cell, FDR, demo field (feeds /map)
   pipeline.py         fetch -> process -> analyze
 app/
-  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze
+  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{meta,grid,global-mean,point}
   web/                React + TS + Vite, R3F globe, ECharts, Tailwind, shadcn/ui, Zustand
-scripts/              fetch_variables, prefetch_demos, run_smoke
+scripts/              fetch_variables, prefetch_demos, run_smoke, prepare_grid
 data/                 cache/ + raw/ (ignored), demos/ (committed, offline demo data)
 tests/                contract + API tests
 docs/                 ARCHITECTURE.md, TEAM.md, AI_DISCLOSURE.md

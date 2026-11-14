@@ -13,6 +13,11 @@ scipy>=1.14
 pymannkendall>=1.4.3
 pyarrow>=17.0
 
+# optional: scripts/prepare_grid.py (NetCDF -> annual grid)
+# xarray>=2024.10
+# netcdf4>=1.7
+# dask>=2024.10
+
 # NASA access
 earthaccess>=0.12
 harmony-py>=1.0

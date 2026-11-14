@@ -1,4 +1,15 @@
-import type { AnalyzeRequest, AnalyzeResponse, Demo, Region, RegionType, VariableInfo } from "./types";
+import type {
+  AnalyzeRequest,
+  AnalyzeResponse,
+  Demo,
+  GlobalMean,
+  Region,
+  RegionType,
+  TrendGrid,
+  TrendMeta,
+  TrendPoint,
+  VariableInfo,
+} from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -27,6 +38,11 @@ export const api = {
   regions: () => request<Record<string, Region>>("/api/regions"),
   regionTypes: () => request<Record<string, RegionType>>("/api/region-types"),
   demos: () => request<Demo[]>("/api/demos"),
+  trendMeta: () => request<TrendMeta>("/api/trendmap/meta"),
+  trendGrid: () => request<TrendGrid>("/api/trendmap/grid"),
+  trendGlobalMean: () => request<GlobalMean>("/api/trendmap/global-mean"),
+  trendPoint: (lat: number, lon: number) =>
+    request<TrendPoint>(`/api/trendmap/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`),
   analyze: (body: AnalyzeRequest) =>
     request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
 };

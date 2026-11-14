@@ -7,5 +7,6 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  server: { proxy: { "/api": "http://localhost:8000" } },
+  // VITE_API_TARGET: use another port if 8000 is taken (Windows: WinError 10013)
+  server: { proxy: { "/api": process.env.VITE_API_TARGET ?? "http://localhost:8000" } },
 });

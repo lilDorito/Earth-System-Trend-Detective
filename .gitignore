@@ -3,6 +3,11 @@ data/cache/*
 !data/cache/.gitkeep
 data/raw/*
 !data/raw/.gitkeep
+data/grid/*
+!data/grid/.gitkeep
+merra2/
+*.nc
+*.nc4
 
 # Python / Jupyter
 __pycache__/

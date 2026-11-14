@@ -2,12 +2,14 @@ import { NavLink, Route, Routes } from "react-router";
 import { Globe2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ExplorerPage from "@/pages/ExplorerPage";
+import TrendMapPage from "@/pages/TrendMapPage";
 import DemosPage from "@/pages/DemosPage";
 import LearnPage from "@/pages/LearnPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 
 const links = [
   { to: "/", label: "Explore" },
+  { to: "/map", label: "Trend map" },
   { to: "/demos", label: "Demos" },
   { to: "/learn", label: "Learn" },
 ];
@@ -35,6 +37,7 @@ export default function App() {
       <main className="min-h-0 flex-1">
         <Routes>
           <Route path="/" element={<ExplorerPage />} />
+          <Route path="/map" element={<TrendMapPage />} />
           <Route path="/demos" element={<DemosPage />} />
           <Route path="/learn" element={<LearnPage />} />
           <Route path="*" element={<NotFoundPage />} />

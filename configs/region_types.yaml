@@ -1,0 +1,27 @@
+# guided flow: "what kind of place?" -> suggested variables (owner: content)
+
+region_types:
+  city:
+    label: A city
+    hint: Cities trap heat and concentrate pollution.
+    suggest: [air_temperature, no2_column]
+  farmland:
+    label: Farmland
+    hint: Crops depend on rain and soil water.
+    suggest: [soil_moisture, precipitation, air_temperature]
+  mountains:
+    label: Mountains
+    hint: Snow and temperature change fast at altitude.
+    suggest: [air_temperature, precipitation]
+  coast:
+    label: A coast
+    hint: Coasts respond to both land and sea.
+    suggest: [air_temperature, precipitation]
+  forest:
+    label: A forest
+    hint: Forests depend on water in the soil.
+    suggest: [soil_moisture, precipitation]
+  desert:
+    label: A desert or dry steppe
+    hint: Small changes in water matter a lot here.
+    suggest: [precipitation, soil_moisture, air_temperature]

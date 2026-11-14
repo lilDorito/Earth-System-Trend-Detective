@@ -1,0 +1,54 @@
+# variable catalog (owners: data for IDs/units, content for names/definitions/tags)
+
+variables:
+  - key: air_temperature
+    variable_id: TODO_VERIFY_M2TMNXSLV_5_12_4_T2M # MERRA-2 monthly, 2 m air temperature
+    source: mock
+    name: Air temperature (2 m)
+    short_definition: How warm the air is about two meters above the ground, the temperature you feel outside.
+    units_raw: K
+    units: °C
+    conversion: K_to_C
+    resolution: monthly
+    coverage_start: 1980-01-01
+    land_only: false
+    region_tags: [city, farmland, mountains, coast, desert, forest]
+
+  - key: soil_moisture
+    variable_id: TODO_VERIFY_GLDAS_NOAH025_M_2_1_SoilMoi0_10cm_inst # GLDAS monthly, top 10 cm
+    source: mock
+    name: Soil moisture (top 10 cm)
+    short_definition: How much water is held in the top layer of soil, which plants and crops depend on.
+    units_raw: kg m-2
+    units: kg/m²
+    conversion: identity
+    resolution: monthly
+    coverage_start: 2000-01-01
+    land_only: true
+    region_tags: [farmland, forest, desert]
+
+  - key: precipitation
+    variable_id: TODO_VERIFY_GPM_3IMERGM_07_precipitation # GPM IMERG monthly
+    source: mock
+    name: Precipitation
+    short_definition: The total amount of rain and snow that falls, measured as the depth of water it would make.
+    units_raw: mm/hr
+    units: mm/month
+    conversion: identity # TODO(data): add a mm/hr -> mm/month conversion if IMERG returns a rate
+    resolution: monthly
+    coverage_start: 2000-06-01
+    land_only: false
+    region_tags: [farmland, forest, mountains, coast, desert]
+
+  - key: no2_column
+    variable_id: TODO_VERIFY_OMNO2d_tropospheric_column # OMI tropospheric NO2
+    source: mock
+    name: Nitrogen dioxide (NO₂)
+    short_definition: A polluting gas mostly from traffic, power plants and industry, measured in the air column above the ground.
+    units_raw: molecules cm-2
+    units: molecules/cm²
+    conversion: identity
+    resolution: monthly
+    coverage_start: 2004-10-01
+    land_only: false
+    region_tags: [city]

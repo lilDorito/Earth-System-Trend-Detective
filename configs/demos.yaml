@@ -1,0 +1,31 @@
+# demo cases shown on the Demos page
+
+demos:
+  - id: kyiv_warming
+    title: Is Kyiv getting warmer?
+    story: Monthly air temperature over Kyiv since 1980, with the seasonal cycle removed.
+    variable: air_temperature
+    region: kyiv
+    start: 1980-01-01
+    end: 2026-09-01
+    mode: trend
+
+  - id: south_vs_northwest_soil
+    title: Is the south of Ukraine drying out?
+    story: Same variable, two regions. Compare the trends to see if they differ in direction or strength.
+    variable: soil_moisture
+    region: kherson_south
+    compare_region: volyn_northwest
+    start: 2000-01-01
+    end: 2026-09-01
+    mode: trend
+
+  - id: kyiv_no2_2022
+    title: What happened to Kyiv's air after February 2022?
+    story: A step change, not a gradual trend, so we compare the mean before and after the date.
+    variable: no2_column
+    region: kyiv
+    start: 2015-01-01
+    end: 2026-09-01
+    mode: event
+    event_date: 2022-02-24

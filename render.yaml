@@ -1,0 +1,19 @@
+# Render Blueprint for the API
+
+services:
+  - type: web
+    name: earth-trend-detective-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATA_MODE
+        value: live
+      - key: EARTHDATA_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

@@ -1,7 +1,8 @@
 // synthetic global trend field for /map
 
 import { createRandom } from "@/lib/random";
-import type { GlobalMean, TrendGrid, TrendMeta, TrendPoint } from "../types";
+import { REGIONS, type RegionName } from "../regions";
+import type { GlobalMean, TrendFrames, TrendGrid, TrendMeta, TrendPoint, TrendRegion } from "../types";
 import { linearFit, rollingMean, round, twoSidedP } from "./stats";
 
 const STEP = 2.5;
@@ -126,5 +127,90 @@ export function trendPoint(lat: number, lon: number): TrendPoint {
     ...summary,
     significant_hr: summary.p < 0.05,
     significant_fdr: getField().sig[i * LONS.length + j] === 1,
+  };
+}
+
+const BASELINE_YEARS = 5;
+
+const cosWeights = LATS.map((lat) => Math.cos(rad(lat)));
+
+/** one anomaly map per year, relative to the mean of the first years */
+export function trendFrames(): TrendFrames {
+  const { values } = getField();
+  const cells = LATS.length * LONS.length;
+  const baseline = new Float64Array(cells);
+  for (let cell = 0; cell < cells; cell++) {
+    for (let k = 0; k < BASELINE_YEARS; k++) baseline[cell] += values[k * cells + cell] / BASELINE_YEARS;
+  }
+  const total = cosWeights.reduce((a, b) => a + b, 0) * LONS.length;
+  const frames: number[][] = [];
+  const globalMean: number[] = [];
+  YEARS.forEach((_, k) => {
+    const frame: number[] = new Array(cells);
+    let sum = 0;
+    for (let cell = 0; cell < cells; cell++) {
+      const anomaly = values[k * cells + cell] - baseline[cell];
+      frame[cell] = round(anomaly, 2);
+      sum += anomaly * cosWeights[Math.floor(cell / LONS.length)];
+    }
+    frames.push(frame);
+    globalMean.push(round(sum / total));
+  });
+  return {
+    start: YEARS[0],
+    end: YEARS[YEARS.length - 1],
+    years: YEARS,
+    baseline: [YEARS[0], YEARS[BASELINE_YEARS - 1]],
+    n_lat: LATS.length,
+    n_lon: LONS.length,
+    frames,
+    global_mean: globalMean,
+  };
+}
+
+/** area-weighted regional mean vs the global mean */
+export function trendRegion(name: string): TrendRegion {
+  if (!(name in REGIONS)) throw new Error(`Unknown region: ${name}`);
+  const { label, bbox } = REGIONS[name as RegionName];
+  const [south, north, west, east] = bbox;
+  const { values, slope } = getField();
+  const cells = LATS.length * LONS.length;
+
+  const members: number[] = [];
+  LATS.forEach((lat, i) =>
+    LONS.forEach((lon, j) => {
+      if (lat >= south && lat <= north && lon >= west && lon <= east) members.push(i * LONS.length + j);
+    }),
+  );
+  if (!members.length) throw new Error("The grid has no cells inside this region");
+
+  const weight = (cell: number) => cosWeights[Math.floor(cell / LONS.length)];
+  const weightSum = members.reduce((sum, cell) => sum + weight(cell), 0);
+  const mean = YEARS.map((_, k) => members.reduce((sum, cell) => sum + values[k * cells + cell] * weight(cell), 0) / weightSum);
+  const world = trendGlobalMean();
+  const region = summarize(mean);
+  const periodMean = mean.reduce((a, b) => a + b, 0) / mean.length;
+  const warming = members.reduce((sum, cell) => sum + (slope[cell] > 0 ? weight(cell) : 0), 0) / weightSum;
+
+  return {
+    name,
+    label,
+    bbox: [south, north, west, east],
+    n_cells: members.length,
+    start: YEARS[0],
+    end: YEARS[YEARS.length - 1],
+    years: YEARS,
+    mean: mean.map((v) => round(v)),
+    fitted: region.fitted,
+    global_mean: world.values,
+    stripes: mean.map((v) => round(v - periodMean)),
+    trend: region.trend as TrendRegion["trend"],
+    p: region.p,
+    autocorr_corrected: false,
+    slope_decade: region.slope_decade,
+    total_change: region.slope_decade * ((YEARS.length - 1) / 10),
+    global_slope_decade: world.slope_decade,
+    ratio: Math.abs(world.slope_decade) < 0.02 ? null : region.slope_decade / world.slope_decade,
+    share_warming: warming,
   };
 }

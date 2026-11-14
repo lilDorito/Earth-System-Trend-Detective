@@ -37,8 +37,72 @@ def test_api_trendmap():
     assert meta["demo"] is True and meta["n_lat"] > 0
     g = client.get("/api/trendmap/grid").json()
     assert len(g["slope"]) == len(g["sig"]) == g["n_lat"] * g["n_lon"]
-    gm = client.get("/api/trendmap/global-mean").json()
-    assert len(gm["years"]) == len(gm["values"])
+    sm = client.get("/api/trendmap/summary").json()
+    assert len(sm["years"]) == len(sm["mean"]) == len(sm["fitted"])
     pt = client.get("/api/trendmap/point", params={"lat": 50.45, "lon": 30.52}).json()
     assert pt["trend"] in {"increasing", "decreasing", "no trend"} and len(pt["values"]) == len(pt["years"])
     assert client.get("/api/trendmap/point", params={"lat": 99, "lon": 0}).status_code == 422
+
+
+def test_api_period_params():
+    g = client.get("/api/trendmap/grid", params={"start": 2005, "end": 2020}).json()
+    assert g["start"] == 2005 and g["span_years"] == 15
+    s = client.get("/api/trendmap/summary", params={"start": 2005, "end": 2020}).json()
+    assert s["years"][0] == 2005 and s["years"][-1] == 2020 and len(s["mean"]) == 16
+    assert abs(s["total_change"] - s["slope_decade"] * 1.5) < 1e-6
+    assert len(s["zonal_slope"]) == len(s["lat"])
+    assert s["share_warming"] + s["share_cooling"] <= 1.0001
+    assert s["share_warming_significant"] <= s["share_warming"]
+    p = client.get("/api/trendmap/point", params={"lat": 0, "lon": 0, "start": 2005, "end": 2020}).json()
+    assert len(p["years"]) == 16
+
+
+def test_api_period_validation():
+    assert client.get("/api/trendmap/summary", params={"start": 2010, "end": 2012}).status_code == 422
+    assert client.get("/api/trendmap/grid", params={"start": 1900, "end": 2020}).status_code == 422
+
+
+def test_every_demo_cell_has_finite_stats():
+    """Hamed-Rao gives NaN p on some smooth series; the API must fall back, never return NaN."""
+    import json
+
+    from app.api import trendmap
+
+    ds = trendmap._ds()
+    for i in range(0, len(ds.lat), 4):
+        for j in range(0, len(ds.lon), 9):
+            r = client.get("/api/trendmap/point", params={"lat": float(ds.lat[i]), "lon": float(ds.lon[j])})
+            assert r.status_code == 200
+            assert np.isfinite(r.json()["p"]), (ds.lat[i], ds.lon[j])
+    json.dumps(client.get("/api/trendmap/summary").json(), allow_nan=False)
+
+
+def test_frames_endpoint(client=None):
+    from fastapi.testclient import TestClient
+    from app.api.main import app
+
+    r = TestClient(app).get("/api/trendmap/frames?start=2005&end=2020")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["years"] == list(range(2005, 2021))
+    assert len(d["frames"]) == 16 and len(d["frames"][0]) == d["n_lat"] * d["n_lon"]
+    assert d["baseline"] == [2005, 2009]
+    assert abs(d["global_mean"][0]) < 0.3  # first years are the baseline
+    assert TestClient(app).get("/api/trendmap/frames?start=2010&end=2012").status_code == 422
+
+
+def test_region_endpoint():
+    from fastapi.testclient import TestClient
+    from app.api.main import app
+
+    c = TestClient(app)
+    r = c.get("/api/trendmap/region?name=ukraine&start=2000&end=2024")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["n_cells"] > 4 and len(d["years"]) == len(d["stripes"]) == 25
+    assert abs(sum(d["stripes"])) < 0.05  # stripes are deviations from the period mean
+    assert d["trend"] in ("increasing", "decreasing", "no trend")
+    arctic = c.get("/api/trendmap/region?name=arctic&start=2000&end=2024").json()
+    tropics = c.get("/api/trendmap/region?name=tropics&start=2000&end=2024").json()
+    assert arctic["slope_decade"] > tropics["slope_decade"]  # Arctic amplification in the demo field
+    assert c.get("/api/trendmap/region?name=mars").status_code == 404

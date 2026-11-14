@@ -127,6 +127,7 @@ export type AnalyzeResponse = {
 
 export type TrendMeta = {
   demo: boolean;
+  label?: string; // what the numbers are and where they come from (set by the API)
   variable: string;
   units: string;
   years: [number, number];
@@ -163,4 +164,41 @@ export type GlobalMean = {
   trend: string;
   p: number;
   slope_decade: number;
+};
+
+export type TrendFrames = {
+  start: number;
+  end: number;
+  years: number[];
+  baseline: [number, number]; // years whose mean is the reference
+  n_lat: number;
+  n_lon: number;
+  // per year: anomaly in °C vs the baseline, latitude ascending then longitude
+  frames: (number | null)[][];
+  // area-weighted global mean anomaly per year
+  global_mean: (number | null)[];
+};
+
+export type TrendRegion = {
+  name: string;
+  label: string;
+  bbox: [number, number, number, number];
+  n_cells: number;
+  start: number;
+  end: number;
+  years: number[];
+  mean: (number | null)[];
+  fitted: (number | null)[];
+  global_mean: (number | null)[];
+  // deviation from the period mean, one stripe per year
+  stripes: (number | null)[];
+  trend: "increasing" | "decreasing" | "no trend";
+  p: number;
+  autocorr_corrected: boolean;
+  slope_decade: number;
+  total_change: number;
+  global_slope_decade: number;
+  // regional trend divided by the global trend, null when the global trend is near zero
+  ratio: number | null;
+  share_warming: number;
 };

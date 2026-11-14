@@ -17,6 +17,11 @@ def _rate_to_mm_per_month(df: pd.DataFrame) -> pd.Series:
     return df["value"] * seconds
 
 
+def _mm_day_to_mm_month(df: pd.DataFrame) -> pd.Series:
+    # monthly mean rate in mm/day -> monthly total in mm
+    return df["value"] * df["time"].dt.days_in_month
+
+
 def _rate_to_mm_per_day(df: pd.DataFrame) -> pd.Series:
     return df["value"] * 86_400
 
@@ -25,6 +30,7 @@ CONVERSIONS = {
     "identity": _identity,
     "K_to_C": _kelvin_to_celsius,
     "kg_m2_s_to_mm_month": _rate_to_mm_per_month,
+    "mm_day_to_mm_month": _mm_day_to_mm_month,
     "kg_m2_s_to_mm_day": _rate_to_mm_per_day,
 }
 

@@ -8,13 +8,19 @@ import GlobeCanvas from "@/features/globe/GlobeCanvas";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
-import { buildTrendCanvas } from "@/features/trendmap/trendLayer";
+import RegionPanel from "@/features/trendmap/RegionPanel";
+import TimelineBar from "@/features/trendmap/TimelineBar";
+import { buildTrendCanvas, FRAME_MAX } from "@/features/trendmap/trendLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
   const s = useTrendMapStore(
     useShallow((s) => ({
       grid: s.grid,
+      frames: s.frames,
+      view: s.view,
+      frameYear: s.frameYear,
+      region: s.region,
       showTrend: s.showTrend,
       onlySignificant: s.onlySignificant,
       picked: s.picked,
@@ -29,10 +35,16 @@ export default function TrendMapPage() {
     void s.load();
   }, [s.load]);
 
-  const overlay = useMemo(
-    () => (s.grid && s.showTrend ? buildTrendCanvas(s.grid, s.onlySignificant) : null),
-    [s.grid, s.showTrend, s.onlySignificant],
-  );
+  const overlay = useMemo(() => {
+    if (!s.showTrend) return null;
+    if (s.view === "years" && s.frames) {
+      const index = s.frames.years.indexOf(s.frameYear);
+      if (index < 0) return null;
+      const { n_lat, n_lon, frames } = s.frames;
+      return buildTrendCanvas({ n_lat, n_lon, slope: frames[index], sig: [] }, false, FRAME_MAX);
+    }
+    return s.grid ? buildTrendCanvas(s.grid, s.onlySignificant) : null;
+  }, [s.grid, s.frames, s.view, s.frameYear, s.showTrend, s.onlySignificant]);
   const texture = useEarthTexture(overlay);
 
   return (
@@ -47,8 +59,10 @@ export default function TrendMapPage() {
       />
       <ControlPanel />
       <AnimatePresence>
+        {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null} />}
         {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
       </AnimatePresence>
+      {s.showTrend && !(s.selected && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
       {s.pointLoading && !s.selected && (
         <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" /> loading cell

@@ -25,3 +25,5 @@ harmony-py>=1.0
 # dev
 pytest>=8.3
 httpx>=0.27
+# for scripts/prepare_gistemp.py (real global grid, NASA GISTEMP):
+# netCDF4

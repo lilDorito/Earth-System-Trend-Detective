@@ -14,6 +14,8 @@ Plus a **global trend map** (`/map`): a spinning Earth with a per-cell temperatu
 
 ## Quick start
 
+One command for API + web (after `pip install -r requirements.txt`): `python scripts/dev.py` -> http://localhost:5173 (API on :5055). Ctrl+C stops both. Manual steps below.
+
 ```bash
 # API (Python 3.13)
 python -m venv .venv && source .venv/bin/activate
@@ -30,6 +32,8 @@ npm run dev # http://localhost:5173
 The web app runs on its own: by default it uses synthetic data generated in the browser (`src/api/mock/`), so no backend is needed for a UI demo. To talk to the API instead, start uvicorn and run `VITE_DATA_SOURCE=api npm run dev` (dev server proxies `/api` to :8000).
 
 Checks: `pytest` and `python scripts/run_smoke.py`.
+
+Real data for points: set `DATA_MODE=live` in `.env`. Air temperature and precipitation then come from the NASA POWER monthly API (no token, cached in `data/cache`); the other variables stay synthetic until their adapters exist.
 
 Port 8000 busy (Windows `WinError 10013`)? `uvicorn app.api.main:app --port 8765` and `VITE_DATA_SOURCE=api VITE_API_TARGET=http://localhost:8765 npm run dev`.
 
@@ -49,13 +53,14 @@ configs/              variables, regions, demos, region types (YAML, no code)
 src/
   contracts.py        THE shared data contract (Series, TrendResult, EventResult, VariableInfo)
   sources/            one adapter per provider -> same Series out
+    power.py          NASA POWER monthly point series via API (no token)
     giovanni.py       point time series        (data, first priority)
     harmony.py        area-averaged series     (data)
     mock.py           synthetic data for DATA_MODE=mock
   cache.py            local cache of raw responses (data)
   units.py            raw -> display units
   processing.py       monthly resample, climatology, anomalies (stats)
-  stats.py            trend + event analysis (stats, currently MOCK)
+  stats.py            trend (OLS + Mann-Kendall/Hamed-Rao) + event (Welch, autocorrelation-adjusted)
   gridtrends.py       global grid: Mann-Kendall + Sen per cell, FDR, demo field (feeds /map)
   pipeline.py         fetch -> process -> analyze
 app/
@@ -63,7 +68,7 @@ app/
   web/                React + TS + Vite, R3F globe, ECharts, Tailwind, shadcn/ui, Zustand
     src/api/          typed client + in-browser mock with the same interface
     src/features/     globe (shared canvas), explorer (wizard + results), trendmap, charts
-scripts/              fetch_variables, prefetch_demos, run_smoke, prepare_grid
+scripts/              fetch_variables, prefetch_demos, run_smoke, prepare_grid, prepare_gistemp, dev
 data/                 cache/ + raw/ (ignored), demos/ (committed, offline demo data)
 tests/                contract + API tests
 docs/                 ARCHITECTURE.md, TEAM.md, AI_DISCLOSURE.md

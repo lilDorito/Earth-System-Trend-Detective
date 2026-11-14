@@ -14,10 +14,11 @@ import { formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import TrendChart from "./TrendChart";
-import { MAX_TREND, TREND_GRADIENT } from "./trendLayer";
+import { REGION_NAMES, shortRegionLabel } from "@/api/regions";
+import { FRAME_MAX, MAX_TREND, TREND_GRADIENT } from "./trendLayer";
 
 const isPhone = () => window.matchMedia("(max-width: 639px)").matches;
-const ticks = [-MAX_TREND, -MAX_TREND / 2, 0, MAX_TREND / 2, MAX_TREND];
+const scale = (max: number) => [-max, -max / 2, 0, max / 2, max];
 
 function Toggle({ label, checked, disabled, onChange }: {
   label: string;
@@ -42,6 +43,10 @@ export default function ControlPanel() {
       error: s.error,
       showTrend: s.showTrend,
       onlySignificant: s.onlySignificant,
+      view: s.view,
+      frames: s.frames,
+      regionName: s.regionName,
+      setRegion: s.setRegion,
       hasSelection: s.selected !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
@@ -59,7 +64,8 @@ export default function ControlPanel() {
         <div>
           <h2 className="text-sm font-semibold">Temperature trend</h2>
           <p className="text-xs text-muted-foreground">
-            MERRA-2 air temperature{s.meta && `, ${s.meta.years[0]} to ${s.meta.years[1]}`}
+            {s.meta?.label ?? "MERRA-2 air temperature"}
+            {s.meta && `, ${s.meta.years[0]} to ${s.meta.years[1]}`}
           </p>
         </div>
         <Button
@@ -94,15 +100,37 @@ export default function ControlPanel() {
 
           {s.showTrend && (
             <PanelSection>
-              <Label className="mb-2">°C per decade</Label>
+              <Label className="mb-2">
+                {s.view === "years" && s.frames ? `°C vs ${s.frames.baseline[0]}-${s.frames.baseline[1]}` : "°C per decade"}
+              </Label>
               <div className="h-1.5" style={{ background: TREND_GRADIENT }} />
               <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
-                {ticks.map((t) => (
+                {scale(s.view === "years" ? FRAME_MAX : MAX_TREND).map((t) => (
                   <span key={t}>{t === 0 ? "0" : formatSigned(t, 1)}</span>
                 ))}
               </div>
             </PanelSection>
           )}
+
+          <PanelSection>
+            <Label className="mb-2">Region analytics</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {REGION_NAMES.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={s.regionName === name}
+                  onClick={() => void s.setRegion(s.regionName === name ? null : name)}
+                  className={cn(
+                    "h-6 cursor-pointer rounded-sm border border-input px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    s.regionName === name && "bg-accent text-foreground",
+                  )}
+                >
+                  {shortRegionLabel(name)}
+                </button>
+              ))}
+            </div>
+          </PanelSection>
 
           <PanelSection>
             {s.loading || !s.globalMean ? (

@@ -2,15 +2,15 @@
 
 variables:
   - key: air_temperature
-    variable_id: TODO_VERIFY_M2TMNXSLV_5_12_4_T2M # MERRA-2 monthly, 2 m air temperature
-    source: mock
+    variable_id: T2M # NASA POWER monthly (MERRA-2 based), 2 m air temperature
+    source: nasa_power
     name: Air temperature (2 m)
     short_definition: How warm the air is about two meters above the ground, the temperature you feel outside.
-    units_raw: K
+    units_raw: °C
     units: °C
-    conversion: K_to_C
+    conversion: identity
     resolution: monthly
-    coverage_start: 1980-01-01
+    coverage_start: 1981-01-01
     land_only: false
     region_tags: [city, farmland, mountains, coast, desert, forest]
 
@@ -28,15 +28,15 @@ variables:
     region_tags: [farmland, forest, desert]
 
   - key: precipitation
-    variable_id: TODO_VERIFY_GPM_3IMERGM_07_precipitation # GPM IMERG monthly
-    source: mock
+    variable_id: PRECTOTCORR # NASA POWER monthly, corrected precipitation (monthly mean rate)
+    source: nasa_power
     name: Precipitation
     short_definition: The total amount of rain and snow that falls, measured as the depth of water it would make.
-    units_raw: mm/hr
+    units_raw: mm/day
     units: mm/month
-    conversion: identity # TODO(data): add a mm/hr -> mm/month conversion if IMERG returns a rate
+    conversion: mm_day_to_mm_month
     resolution: monthly
-    coverage_start: 2000-06-01
+    coverage_start: 1981-01-01
     land_only: false
     region_tags: [farmland, forest, mountains, coast, desert]
 

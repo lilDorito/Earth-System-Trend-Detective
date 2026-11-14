@@ -4,6 +4,9 @@ import type { TrendGrid } from "@/api/types";
 
 export const MAX_TREND = 0.8;
 
+// color saturation for the year-by-year view, °C vs the baseline years
+export const FRAME_MAX = 2;
+
 type Rgb = [number, number, number];
 
 const COOL: Rgb = [33, 102, 172];
@@ -19,13 +22,14 @@ const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
   a[2] + (b[2] - a[2]) * t,
 ];
 
-export function trendColor(value: number): Rgb {
-  const t = Math.max(-1, Math.min(1, value / MAX_TREND));
+/** max = the value at which the color saturates (default: the per-decade trend scale) */
+export function trendColor(value: number, max = MAX_TREND): Rgb {
+  const t = Math.max(-1, Math.min(1, value / max));
   return t < 0 ? mix(NEUTRAL, COOL, -t) : mix(NEUTRAL, WARM, t);
 }
 
 // north up, longitude -180..180
-export function buildTrendCanvas(grid: TrendGrid, onlySignificant: boolean): HTMLCanvasElement {
+export function buildTrendCanvas(grid: TrendGrid, onlySignificant: boolean, max = MAX_TREND): HTMLCanvasElement {
   const { n_lat: rows, n_lon: cols } = grid;
   const canvas = document.createElement("canvas");
   canvas.width = cols;
@@ -41,7 +45,7 @@ export function buildTrendCanvas(grid: TrendGrid, onlySignificant: boolean): HTM
       const value = grid.slope[idx];
       if (value == null) continue;
       const muted = onlySignificant && grid.sig[idx] === 0;
-      const [r, g, b] = muted ? MUTED : trendColor(value);
+      const [r, g, b] = muted ? MUTED : trendColor(value, max);
       image.data.set([r, g, b, muted ? 150 : 255], (row * cols + col) * 4);
     }
   }

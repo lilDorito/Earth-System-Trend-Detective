@@ -8,7 +8,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 Resolution = Literal["hourly", "3-hourly", "daily", "monthly"]
-SourceName = Literal["giovanni_point", "harmony_area", "firms", "appeears", "mock"]
+SourceName = Literal["giovanni_point", "harmony_area", "nasa_power", "firms", "appeears", "mock"]
 Mode = Literal["trend", "event"]
 
 SERIES_COLUMNS = ("time", "value")

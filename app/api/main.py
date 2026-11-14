@@ -65,6 +65,8 @@ def analyze(req: AnalyzeRequest):
         raise HTTPException(502, str(e))
     except NotImplementedError as e:
         raise HTTPException(501, str(e))
+    except ValueError as e:  # not enough data on a side of the event, flat series, ...
+        raise HTTPException(422, str(e))
 
     points = [
         SeriesPoint(**{k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()})

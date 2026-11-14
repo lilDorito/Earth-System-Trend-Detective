@@ -10,7 +10,7 @@ import { formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 
-const STEP_MS = 700;
+const STEP_MS = 1600;
 
 export default function TimelineBar() {
   const s = useTrendMapStore(

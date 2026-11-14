@@ -72,24 +72,37 @@ function upsample(src: Float32Array, nlat: number, nlon: number) {
   return { out, width, height };
 }
 
-// red: field value, green: mask (1 = shown in full, 0 = muted)
-export function fieldTextureData(field: Float32Array, mask: ArrayLike<number> | null, nlat: number, nlon: number) {
+// interleaved pairs: field value, then mask (1 = shown in full, 0 = muted)
+export function fieldGrid(field: Float32Array, mask: ArrayLike<number> | null, nlat: number, nlon: number) {
   const { out: values, width, height } = upsample(field, nlat, nlon);
   const shown = mask ? upsample(Float32Array.from(mask), nlat, nlon).out : null;
-  const data = new Uint16Array(width * height * 2);
-  const one = DataUtils.toHalfFloat(1);
+  const data = new Float32Array(width * height * 2);
   for (let k = 0; k < values.length; k++) {
-    data[2 * k] = DataUtils.toHalfFloat(values[k]);
-    data[2 * k + 1] = shown ? DataUtils.toHalfFloat(shown[k]) : one;
+    data[2 * k] = values[k];
+    data[2 * k + 1] = shown ? shown[k] : 1;
   }
   return { data, width, height };
 }
 
-export function createFieldTexture({ data, width, height }: ReturnType<typeof fieldTextureData>) {
-  const texture = new DataTexture(data, width, height, RGFormat, HalfFloatType);
+export type FieldGrid = ReturnType<typeof fieldGrid>;
+
+function toHalf(data: Float32Array) {
+  const half = new Uint16Array(data.length);
+  for (let k = 0; k < data.length; k++) half[k] = DataUtils.toHalfFloat(data[k]);
+  return half;
+}
+
+export function createFieldTexture({ data, width, height }: FieldGrid) {
+  const texture = new DataTexture(toHalf(data), width, height, RGFormat, HalfFloatType);
   texture.magFilter = texture.minFilter = LinearFilter;
   texture.wrapS = RepeatWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   texture.needsUpdate = true;
   return texture;
+}
+
+// refill in place, so stepping through years never reallocates GPU memory
+export function updateFieldTexture(texture: DataTexture, data: Float32Array) {
+  texture.image.data = toHalf(data);
+  texture.needsUpdate = true;
 }

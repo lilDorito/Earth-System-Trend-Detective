@@ -15,7 +15,7 @@ import type {
   VariableInfo,
 } from "./types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "";
+const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   constructor(

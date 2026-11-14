@@ -38,8 +38,8 @@ export default function TrendMapPage() {
     void s.load();
   }, [s.load]);
 
+  // built even while hidden, so switching the layer on can fade in at once
   const layer = useMemo(() => {
-    if (!s.showTrend) return null;
     if (s.view === "years" && s.frames) {
       const { n_lat, n_lon, years, frames } = s.frames;
       const index = years.indexOf(s.frameYear);
@@ -49,7 +49,7 @@ export default function TrendMapPage() {
     if (!s.grid) return null;
     const { n_lat, n_lon, slope, sig } = s.grid;
     return { nlat: n_lat, nlon: n_lon, values: slope, mask: s.onlySignificant ? sig : null, max: MAX_TREND };
-  }, [s.grid, s.frames, s.view, s.frameYear, s.showTrend, s.onlySignificant]);
+  }, [s.grid, s.frames, s.view, s.frameYear, s.onlySignificant]);
   const texture = useEarthTexture();
 
   return (
@@ -64,7 +64,9 @@ export default function TrendMapPage() {
         onClear={s.clearSelection}
         loading={s.showTrend && !layer && !s.error ? "Loading trend data" : null}
       >
-        {layer && texture && <FieldLayer earth={texture} colors={bandColors} {...layer} />}
+        {layer && texture && (
+          <FieldLayer earth={texture} colors={bandColors} transition={1.1} visible={s.showTrend} {...layer} />
+        )}
       </GlobeCanvas>
       <ControlPanel />
       <AnimatePresence>

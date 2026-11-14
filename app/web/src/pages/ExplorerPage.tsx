@@ -1,29 +1,37 @@
-// Main screen: globe to pick a place, wizard to pick a variable, chart + verdict for the result
+// explorer page: globe and sidebar
 
-import Globe from "@/features/globe/Globe";
-import Wizard from "@/features/wizard/Wizard";
-import TimeSeriesChart from "@/features/charts/TimeSeriesChart";
-import VerdictCard from "@/features/results/VerdictCard";
+import { useShallow } from "zustand/react/shallow";
+import Results from "@/features/explorer/Results";
+import Wizard from "@/features/explorer/Wizard";
+import GlobeCanvas from "@/features/globe/GlobeCanvas";
+import { useEarthTexture } from "@/features/globe/useEarthTexture";
+import { locationCenter } from "@/lib/format";
 import { useAppStore } from "@/store/useAppStore";
 
+const round = (v: number) => Math.round(v * 1000) / 1000;
+
 export default function ExplorerPage() {
-  const response = useAppStore((s) => s.response);
-  const error = useAppStore((s) => s.error);
+  const { location, focus, setLocation } = useAppStore(
+    useShallow((s) => ({ location: s.location, focus: s.focus, setLocation: s.setLocation })),
+  );
+  const texture = useEarthTexture();
 
   return (
-    <div className="grid h-full grid-cols-1 lg:grid-cols-[1fr_420px]">
-      <section className="relative min-h-[400px]">
-        <Globe />
+    <div className="scrollbar-thin h-full overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
+      <section className="relative h-[45vh] min-h-80 lg:h-full">
+        <GlobeCanvas
+          texture={texture}
+          marker={location && locationCenter(location)}
+          focus={focus}
+          autoRotate={!location}
+          hint="Drag to rotate, click to pick a place"
+          onPick={(lat, lon, name) => setLocation({ type: "point", lat: round(lat), lon: round(lon) }, name ?? null)}
+        />
       </section>
-      <aside className="flex flex-col gap-4 overflow-y-auto border-l border-neutral-800 p-4">
+
+      <aside className="scrollbar-thin border-t bg-card lg:overflow-y-auto lg:border-l lg:border-t-0">
         <Wizard />
-        {error && <p className="rounded bg-red-950 p-3 text-sm text-red-200">{error}</p>}
-        {response && (
-          <>
-            <VerdictCard result={response.result} meta={response.meta} />
-            <TimeSeriesChart response={response} />
-          </>
-        )}
+        <Results />
       </aside>
     </div>
   );

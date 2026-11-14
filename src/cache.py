@@ -1,4 +1,4 @@
-# local cache for raw provider responses (owner: data)
+# local cache of raw provider responses
 
 import hashlib
 from datetime import date
@@ -17,11 +17,10 @@ def cache_key(variable_id: str, location: Location, start: date, end: date) -> s
 
 
 def get(key: str) -> tuple[pd.DataFrame, dict] | None:
-    # TODO(data): look in settings.cache_dir, then settings.demos_dir (committed demo series)
-    #   suggested format: <key>.parquet for the frame + <key>.json for the provider header
+    # TODO(data): read from cache_dir, then demos_dir
     return None
 
 
 def put(key: str, raw_df: pd.DataFrame, header: dict) -> None:
-    # TODO(data): write to settings.cache_dir; raw (unconverted) values only
+    # TODO(data): write raw values to cache_dir
     _ = settings.cache_dir

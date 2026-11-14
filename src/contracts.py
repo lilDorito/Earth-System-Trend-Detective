@@ -1,4 +1,4 @@
-# shared data contract
+# data contract shared by sources, stats and the API
 
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -14,8 +14,6 @@ Mode = Literal["trend", "event"]
 SERIES_COLUMNS = ("time", "value")
 PROCESSED_COLUMNS = ("time", "value", "climatology", "anomaly")
 
-
-# where
 
 class Point(BaseModel):
     type: Literal["point"] = "point"
@@ -34,25 +32,21 @@ class BBox(BaseModel):
 Location = Annotated[Point | BBox, Field(discriminator="type")]
 
 
-# what (catalog, owner: content + data)
-
 class VariableInfo(BaseModel):
-    key: str # stable app-level slug used by the frontend, e.g. "air_temperature"
-    variable_id: str # provider ID, e.g. a Giovanni configured-variable ID
-    source: SourceName # which adapter fetches it
+    key: str
+    variable_id: str
+    source: SourceName
     name: str
-    short_definition: str # one plain sentence for students
-    units_raw: str # what the provider returns, e.g. "K"
-    units: str # what we display, e.g. "°C"
-    conversion: str = "identity" # key in src/units.py CONVERSIONS
+    short_definition: str
+    units_raw: str
+    units: str
+    conversion: str = "identity"
     resolution: Resolution
     coverage_start: date
-    coverage_end: date | None = None  # None = ongoing
-    land_only: bool = False # GLDAS etc: sea points come back empty
-    region_tags: list[str] = [] # e.g. ["city", "farmland"]
+    coverage_end: date | None = None
+    land_only: bool = False
+    region_tags: list[str] = []
 
-
-# data layer output (owner: data)
 
 class SeriesMeta(BaseModel):
     variable_key: str
@@ -88,8 +82,6 @@ def validate_series(df: pd.DataFrame, columns: tuple[str, ...] = SERIES_COLUMNS)
         raise ValueError("Series.value must be float")
 
 
-# analysis layer output (owner: stats)
-
 class TrendResult(BaseModel):
     mode: Literal["trend"] = "trend"
     n: int
@@ -97,13 +89,11 @@ class TrendResult(BaseModel):
     end: date
     units: str
     alpha: float = 0.05
-    # linear regression on deseasonalized values
     slope_per_decade: float
     ci_low: float
     ci_high: float
     p_value: float
     significant: bool
-    # Mann-Kendall + Sen's slope
     mk_trend: Literal["increasing", "decreasing", "no trend"]
     mk_tau: float
     mk_p: float

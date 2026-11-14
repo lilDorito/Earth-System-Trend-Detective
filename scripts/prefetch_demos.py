@@ -1,1 +1,1 @@
-# fetch every demo series in live mode and store it in data/demos/ (committed) (owner: data)
+# TODO(data): fetch demo series in live mode into data/demos/

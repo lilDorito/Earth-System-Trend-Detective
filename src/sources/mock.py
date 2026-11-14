@@ -1,4 +1,4 @@
-# synthetic monthly series
+# synthetic monthly series for DATA_MODE=mock
 
 import hashlib
 from datetime import date, datetime, timezone
@@ -8,7 +8,7 @@ import pandas as pd
 
 from ..contracts import Location, Point, Series, SeriesMeta, VariableInfo
 
-# per variable key: (baseline, seasonal amplitude, trend per decade, noise sd) in display units
+# (base, seasonal amplitude, trend per decade, noise sd)
 PROFILES = {
     "air_temperature": (8.0, 12.0, 0.4, 1.2),
     "soil_moisture": (25.0, 5.0, -0.8, 1.5),

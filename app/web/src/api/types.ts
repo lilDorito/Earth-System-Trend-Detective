@@ -1,4 +1,4 @@
-// Mirror of src/contracts.py + app/api/schemas.py. Change both in the same PR.
+// API types, mirror src/contracts.py and app/api/schemas.py
 
 export type Resolution = "hourly" | "3-hourly" | "daily" | "monthly";
 export type SourceName = "giovanni_point" | "harmony_area" | "firms" | "appeears" | "mock";
@@ -18,7 +18,7 @@ export type VariableInfo = {
   units: string;
   conversion: string;
   resolution: Resolution;
-  coverage_start: string; // ISO date
+  coverage_start: string;
   coverage_end: string | null;
   land_only: boolean;
   region_tags: string[];
@@ -125,10 +125,8 @@ export type AnalyzeResponse = {
   result: AnalysisResult;
 };
 
-// Trend map (src/gridtrends.py, app/api/trendmap.py)
-
 export type TrendMeta = {
-  demo: boolean; // true = synthetic field, data/grid/annual.npz is missing
+  demo: boolean;
   variable: string;
   units: string;
   years: [number, number];
@@ -139,8 +137,9 @@ export type TrendMeta = {
 export type TrendGrid = {
   n_lat: number;
   n_lon: number;
-  slope: (number | null)[]; // °C per decade, latitude ascending then longitude
-  sig: number[]; // 1 = significant at FDR 5%
+  // row-major, latitude ascending, °C per decade
+  slope: (number | null)[];
+  sig: number[];
 };
 
 export type TrendPoint = {

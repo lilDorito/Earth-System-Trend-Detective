@@ -1,4 +1,4 @@
-# end-to-end on the mock source
+# pipeline and API on the mock source
 
 from datetime import date
 

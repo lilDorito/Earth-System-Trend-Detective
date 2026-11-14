@@ -1,4 +1,4 @@
-# Giovanni area-averaged time series via harmony-py (owner: data, after giovanni.py works)
+# Giovanni area-averaged series via harmony-py
 
 from datetime import date
 
@@ -9,5 +9,5 @@ class HarmonyAreaSource:
     name = "harmony_area"
 
     def fetch(self, variable: VariableInfo, location: Location, start: date, end: date) -> Series:
-        # TODO(data): same flow as giovanni.py (cache -> request -> parse -> cache -> convert)
+        # TODO(data): same flow as giovanni.py
         raise NotImplementedError("Harmony area-average adapter not implemented yet")

@@ -1,4 +1,4 @@
-# run every demo in configs/demos.yaml through the pipeline and print the verdicts
+# run every demo through the pipeline and print the verdicts
 
 import sys
 from pathlib import Path

@@ -1,4 +1,4 @@
-# source registry: one adapter per provider, all return the same contracts.Series
+# source registry
 
 from .base import Source
 from .giovanni import GiovanniPointSource
@@ -9,8 +9,6 @@ SOURCES: dict[str, Source] = {
     "mock": MockSource(),
     "giovanni_point": GiovanniPointSource(),
     "harmony_area": HarmonyAreaSource(),
-    # "firms": FirmsSource(),        # optional, war-impact demo
-    # "appeears": AppeearsSource(),  # optional, NDVI / night lights
 }
 
 

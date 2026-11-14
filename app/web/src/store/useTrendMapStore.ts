@@ -1,10 +1,10 @@
-// State of the global trend map: grid layer, global mean, selected point
+// trend map state
 
 import { create } from "zustand";
-import { api } from "@/api/client";
+import { api } from "@/api";
 import type { GlobalMean, TrendGrid, TrendMeta, TrendPoint } from "@/api/types";
 
-type State = {
+type TrendMapState = {
   meta: TrendMeta | null;
   grid: TrendGrid | null;
   globalMean: GlobalMean | null;
@@ -14,34 +14,35 @@ type State = {
   showTrend: boolean;
   onlySignificant: boolean;
 
+  picked: { lat: number; lon: number } | null;
   selected: TrendPoint | null;
   pointLoading: boolean;
 
-  loadAll: () => Promise<void>;
+  load: () => Promise<void>;
   setShowTrend: (on: boolean) => void;
   setOnlySignificant: (on: boolean) => void;
   selectPoint: (lat: number, lon: number) => Promise<void>;
   clearSelection: () => void;
 };
 
-// id of the latest point request: stale responses are ignored
 let pointRequestId = 0;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export const useTrendMapStore = create<State>((set, get) => ({
+export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   meta: null,
   grid: null,
   globalMean: null,
   loading: false,
   error: null,
 
-  showTrend: false, // plain Earth by default
+  showTrend: true,
   onlySignificant: false,
 
+  picked: null,
   selected: null,
   pointLoading: false,
 
-  async loadAll() {
+  async load() {
     if (get().loading || get().grid) return;
     set({ loading: true, error: null });
     try {
@@ -57,7 +58,7 @@ export const useTrendMapStore = create<State>((set, get) => ({
 
   async selectPoint(lat, lon) {
     const id = ++pointRequestId;
-    set({ pointLoading: true });
+    set({ picked: { lat, lon }, pointLoading: true });
     try {
       const point = await api.trendPoint(lat, lon);
       if (id === pointRequestId) set({ selected: point, pointLoading: false });
@@ -68,6 +69,6 @@ export const useTrendMapStore = create<State>((set, get) => ({
 
   clearSelection() {
     pointRequestId++;
-    set({ selected: null, pointLoading: false });
+    set({ picked: null, selected: null, pointLoading: false });
   },
 }));

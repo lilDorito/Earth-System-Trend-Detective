@@ -1,4 +1,4 @@
-# request / response bodies
+# API request and response models
 
 from datetime import date, datetime
 

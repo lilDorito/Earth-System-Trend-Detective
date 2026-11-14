@@ -1,4 +1,4 @@
-# variable catalog, regions, demos and region-type suggestions, all from configs/
+# variables, regions, demos and region types from configs/
 
 from functools import lru_cache
 

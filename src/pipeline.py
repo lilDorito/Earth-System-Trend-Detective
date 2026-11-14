@@ -1,4 +1,4 @@
-# fetch -> process -> analyze; the only entry point the API uses
+# fetch -> process -> analyze
 
 from datetime import date
 

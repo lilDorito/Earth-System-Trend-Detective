@@ -1,4 +1,4 @@
-# series -> monthly frame with climatology and anomalies (owner: stats)
+# monthly resample, climatology and anomalies
 
 import pandas as pd
 
@@ -6,9 +6,7 @@ from .contracts import PROCESSED_COLUMNS, validate_series
 
 
 def to_monthly(df: pd.DataFrame) -> pd.DataFrame:
-    """Resample any resolution to month-start means."""
-    # TODO(stats): drop months with too little data (e.g. < 70% of expected samples)
-    # TODO(stats): accumulated variables (precip in mm) may need sum, not mean, if converted before resampling
+    # TODO(stats): drop sparse months
     out = (
         df.set_index("time")["value"]
         .resample("MS")
@@ -20,8 +18,7 @@ def to_monthly(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_anomalies(monthly: pd.DataFrame) -> pd.DataFrame:
-    """climatology = mean of each calendar month, anomaly = value - climatology."""
-    # TODO(stats): optional fixed baseline period (e.g. 1991-2020) instead of the full record
+    # TODO(stats): optional fixed baseline period
     out = monthly.copy()
     month = out["time"].dt.month
     out["climatology"] = out.groupby(month)["value"].transform("mean")

@@ -1,4 +1,4 @@
-# grid trend stats + /api/trendmap on the synthetic demo field
+# grid trend stats and /api/trendmap
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -15,7 +15,7 @@ def test_sen_slope_recovers_known_trend():
     x = 0.05 * np.arange(n)[:, None, None] + rng.normal(0, 0.1, (n, 3, 4))
     slope, p, q, sig = gridtrends.compute_grid(x)
     assert slope.shape == (3, 4)
-    assert np.allclose(slope, 0.5, atol=0.1)  # 0.05/yr -> 0.5/decade
+    assert np.allclose(slope, 0.5, atol=0.1)
     assert sig.all()
 
 

@@ -1,4 +1,4 @@
-# trend and event analysis (owner: stats)
+# trend and event analysis (placeholder numbers for now)
 
 from datetime import date
 
@@ -14,13 +14,7 @@ def analyze_trend(
     deseasonalize: bool = True,
     alpha: float = 0.05,
 ) -> TrendResult:
-    """processed has columns time, value, climatology, anomaly (monthly)."""
-    # TODO(stats): scipy.stats.linregress on anomalies (or values) vs decimal years
-    #   slope, stderr -> 95% CI with t-distribution, p_value
-    # TODO(stats): pymannkendall: original_test, seasonal_test, hamed_rao_modification_test
-    #   (autocorrelation-corrected) -> mk_trend, mk_tau, mk_p, sen_slope_per_decade
-    # TODO(stats): verdict sentence, e.g.
-    #   "Rising by 0.31 °C per decade since 1980 (95% CI 0.24-0.38). Significant at 95%."
+    # TODO(stats): real regression and Mann-Kendall
     df = processed.dropna(subset=["value"])
     y = df["anomaly"] if deseasonalize else df["value"]
     years = (df["time"] - df["time"].iloc[0]).dt.days / 365.25
@@ -48,7 +42,10 @@ def analyze_trend(
         total_change=float(slope * span_years),
         deseasonalized=deseasonalize,
         autocorr_corrected=False,
-        fit_line=[(df["time"].iloc[0].to_pydatetime(), float(fit.iloc[0])), (df["time"].iloc[-1].to_pydatetime(), float(fit.iloc[-1]))],
+        fit_line=[
+            (df["time"].iloc[0].to_pydatetime(), float(fit.iloc[0])),
+            (df["time"].iloc[-1].to_pydatetime(), float(fit.iloc[-1])),
+        ],
         verdict=f"[MOCK] Changing by {slope * 10:+.2f} {units} per decade.",
     )
 
@@ -60,9 +57,7 @@ def analyze_event(
     deseasonalize: bool = True,
     alpha: float = 0.05,
 ) -> EventResult:
-    # TODO(stats): scipy.stats.ttest_ind(after, before, equal_var=False)  (Welch)
-    # TODO(stats): CI of the difference of means, pct_change, verdict
-    # TODO(stats): optional change-point check (Pettitt / ruptures) to show the break is real
+    # TODO(stats): Welch t-test
     df = processed.dropna(subset=["value"])
     col = "anomaly" if deseasonalize else "value"
     cut = pd.Timestamp(event_date, tz=df["time"].dt.tz)

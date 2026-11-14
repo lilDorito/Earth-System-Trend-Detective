@@ -24,12 +24,14 @@ uvicorn app.api.main:app --reload # http://localhost:8000/docs
 # Web
 cd app/web
 npm install
-npm run dev # http://localhost:5173, proxies /api to :8000
+npm run dev # http://localhost:5173
 ```
+
+The web app runs on its own: by default it uses synthetic data generated in the browser (`src/api/mock/`), so no backend is needed for a UI demo. To talk to the API instead, start uvicorn and run `VITE_DATA_SOURCE=api npm run dev` (dev server proxies `/api` to :8000).
 
 Checks: `pytest` and `python scripts/run_smoke.py`.
 
-Port 8000 busy (Windows `WinError 10013`)? `uvicorn app.api.main:app --port 8765` and `VITE_API_TARGET=http://localhost:8765 npm run dev`.
+Port 8000 busy (Windows `WinError 10013`)? `uvicorn app.api.main:app --port 8765` and `VITE_DATA_SOURCE=api VITE_API_TARGET=http://localhost:8765 npm run dev`.
 
 ### Trend map data
 
@@ -59,6 +61,8 @@ src/
 app/
   api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{meta,grid,global-mean,point}
   web/                React + TS + Vite, R3F globe, ECharts, Tailwind, shadcn/ui, Zustand
+    src/api/          typed client + in-browser mock with the same interface
+    src/features/     globe (shared canvas), explorer (wizard + results), trendmap, charts
 scripts/              fetch_variables, prefetch_demos, run_smoke, prepare_grid
 data/                 cache/ + raw/ (ignored), demos/ (committed, offline demo data)
 tests/                contract + API tests
@@ -70,3 +74,5 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the data flow and contrac
 ## Data
 
 NASA Giovanni (MERRA-2, GLDAS, GPM IMERG, OMI, ...), accessed with an Earthdata Login token. NASA does not endorse this project.
+
+Globe imagery: NASA Blue Marble Next Generation with topography and bathymetry (July 2004): an 8K/4K base texture plus full-resolution 22.5° tiles (`public/textures/tiles/`) that load when zoomed in. Borders: [Natural Earth](https://www.naturalearthdata.com/) via `world-atlas`, with Crimea shown as part of Ukraine. Cities: Natural Earth populated places with a per-country quota, rebuilt with `node app/web/scripts/build-cities.mjs`.

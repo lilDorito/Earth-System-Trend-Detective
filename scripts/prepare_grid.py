@@ -1,6 +1,4 @@
-# build data/grid/annual.npz (annual mean T2M, degC) from downloaded MERRA-2 files in merra2/
-# usage: python scripts/prepare_grid.py [folder_with_nc4]   (needs: pip install xarray netcdf4 dask)
-# without the output file the API serves a synthetic demo field (/api/trendmap/meta -> demo: true)
+# MERRA-2 monthly .nc4 files -> data/grid/annual.npz (needs xarray, netcdf4, dask)
 
 import glob
 import sys
@@ -22,7 +20,7 @@ def main():
 
     t2m = xr.open_mfdataset(files, combine="by_coords")["T2M"] - 273.15
     counts = t2m["time"].groupby("time.year").count()
-    full = counts["year"].values[counts.values == 12]  # full years only
+    full = counts["year"].values[counts.values == 12]
     annual = t2m.groupby("time.year").mean().sel(year=full).load()
     print("years:", int(full[0]), "-", int(full[-1]), f"({len(full)})")
 

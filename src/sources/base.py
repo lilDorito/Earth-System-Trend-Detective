@@ -1,4 +1,4 @@
-# interface every data adapter implements
+# interface every data source implements
 
 from datetime import date
 from typing import Protocol
@@ -7,7 +7,7 @@ from ..contracts import Location, Series, VariableInfo
 
 
 class SourceError(Exception):
-    """Provider failed or returned nothing usable (mapped to HTTP 502 by the API)."""
+    pass
 
 
 class Source(Protocol):

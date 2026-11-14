@@ -12,7 +12,7 @@ def _kelvin_to_celsius(df: pd.DataFrame) -> pd.Series:
 
 
 def _rate_to_mm_per_month(df: pd.DataFrame) -> pd.Series:
-    # kg m-2 s-1 (== mm/s) monthly mean rate -> mm accumulated in that month
+    # kg m-2 s-1 == mm/s
     seconds = df["time"].dt.days_in_month * 86_400
     return df["value"] * seconds
 

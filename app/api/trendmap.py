@@ -1,4 +1,4 @@
-# global trend map endpoints for the globe layer: /api/trendmap/*
+# /api/trendmap endpoints for the global trend map
 
 from functools import lru_cache
 
@@ -23,7 +23,6 @@ def _nearest(axis: np.ndarray, value: float, circular: bool) -> int:
 
 
 def _summary(values: np.ndarray):
-    """Hamed-Rao modified Mann-Kendall (autocorrelation-corrected) + Sen line."""
     res = mk.hamed_rao_modification_test(values)
     return res, res.intercept + res.slope * np.arange(len(values))
 
@@ -64,7 +63,6 @@ def meta():
 
 @router.get("/grid")
 def grid():
-    """Trend per cell in °C/decade and FDR-significance flag. Order: latitude ascending, then longitude."""
     s = _state()
     return {
         "n_lat": int(s["slope"].shape[0]),
@@ -81,7 +79,6 @@ def global_mean():
 
 @router.get("/point")
 def point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
-    """Annual series and trend tests for the grid cell nearest to the point."""
     s = _state()
     ds = s["ds"]
     i, j = _nearest(ds.lat, lat, False), _nearest(ds.lon, lon, True)

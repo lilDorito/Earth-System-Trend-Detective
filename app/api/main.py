@@ -1,4 +1,4 @@
-# FastAPI app
+# FastAPI app: catalog endpoints and /api/analyze
 
 import math
 import os
@@ -13,10 +13,12 @@ from src.sources.base import SourceError
 from .schemas import AnalyzeRequest, AnalyzeResponse, SeriesPoint
 from .trendmap import router as trendmap_router
 
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")]
+
 app = FastAPI(title="Earth Trend Detective API", version="0.1")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
+    allow_origins=[o for o in CORS_ORIGINS if o],
     allow_origin_regex=os.environ.get("CORS_ORIGIN_REGEX") or None,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],

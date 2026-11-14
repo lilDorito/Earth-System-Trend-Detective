@@ -1,4 +1,4 @@
-# global grid trends for the globe layer: Mann-Kendall + Sen's slope per cell, FDR across cells
+# per-cell Mann-Kendall + Sen trends with FDR for the trend map
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,20 +10,19 @@ from .config import ROOT
 
 ALPHA = 0.05
 GRID_FILE = ROOT / "data" / "grid" / "annual.npz"
-CHUNK_CELLS = 20_000  # cells per block, keeps the pairwise-slope stack small
+CHUNK_CELLS = 20_000
 
 
 @dataclass
 class GridDataset:
-    years: np.ndarray  # (n,)
-    lat: np.ndarray  # (nlat,) ascending
-    lon: np.ndarray  # (nlon,) -180..180 ascending
-    t2m: np.ndarray  # (n, nlat, nlon) annual mean, degC
+    years: np.ndarray
+    lat: np.ndarray
+    lon: np.ndarray
+    t2m: np.ndarray  # (years, lat, lon), degC
     demo: bool
 
 
 def normalize(years, lat, lon, t2m):
-    """Latitude ascending, longitude wrapped to -180..180 and ascending."""
     lat_order = np.argsort(lat)
     lon_wrapped = ((lon + 180.0) % 360.0) - 180.0
     lon_order = np.argsort(lon_wrapped)
@@ -31,7 +30,6 @@ def normalize(years, lat, lon, t2m):
 
 
 def make_demo() -> GridDataset:
-    """Synthetic 2.5 degree field (Arctic amplification, a cooling patch over Asia, AR(1) noise)."""
     rng = np.random.default_rng(42)
     years = np.arange(2000, 2025)
     lat = np.arange(-90, 90.1, 2.5)
@@ -55,7 +53,6 @@ def make_demo() -> GridDataset:
 
 
 def load_grid(path: Path = GRID_FILE) -> GridDataset:
-    """Real annual means from data/grid/annual.npz (scripts/prepare_grid.py), else the synthetic demo."""
     if path.exists():
         with np.load(path) as f:
             years, lat, lon, t2m = normalize(f["years"], f["lat"], f["lon"], f["t2m"])
@@ -74,7 +71,7 @@ def _mann_kendall_block(x: np.ndarray):
             slopes.append(diff / (j - i))
     sen = np.median(np.stack(slopes), axis=0)
 
-    # lag-1 autocorrelation of residuals around the Sen line (positive part only)
+    # lag-1 autocorrelation of residuals
     t = np.arange(n, dtype=np.float32).reshape(n, 1)
     resid = x - sen * t
     resid = resid - np.median(resid, axis=0)
@@ -89,12 +86,8 @@ def _mann_kendall_block(x: np.ndarray):
     return sen, 2 * norm.sf(np.abs(z))
 
 
+# p only approximates Hamed-Rao; single cells use pymannkendall
 def mann_kendall_grid(x: np.ndarray):
-    """x: (years, lat, lon). Returns Sen slope per year and an approximate autocorrelation-adjusted p-value.
-
-    Not identical to pymannkendall's Hamed-Rao p-value (simplified variance factor); the Sen slope is identical.
-    Use stats-grade tests (pymannkendall) for a single cell, see app/api/trendmap.py.
-    """
     shape = x.shape[1:]
     flat = x.reshape(x.shape[0], -1).astype(np.float32)
     sen = np.empty(flat.shape[1], dtype=np.float32)
@@ -105,7 +98,6 @@ def mann_kendall_grid(x: np.ndarray):
 
 
 def fdr_bh(p: np.ndarray) -> np.ndarray:
-    """Benjamini-Hochberg q-values, NaN stays NaN."""
     flat = p.ravel()
     valid = np.isfinite(flat)
     q = np.full(flat.shape, np.nan)
@@ -121,13 +113,11 @@ def fdr_bh(p: np.ndarray) -> np.ndarray:
 
 
 def compute_grid(annual: np.ndarray):
-    """annual: (years, lat, lon) degC. Returns (slope per decade, p, q, significant mask at FDR ALPHA)."""
     sen, p = mann_kendall_grid(annual)
     q = fdr_bh(p)
     return sen * 10, p, q, np.isfinite(q) & (q < ALPHA)
 
 
 def global_mean(ds: GridDataset) -> np.ndarray:
-    """Area-weighted (cos lat) global mean per year."""
     w = np.cos(np.deg2rad(ds.lat))
     return (ds.t2m * w[None, :, None]).sum(axis=(1, 2)) / (w.sum() * ds.t2m.shape[2])

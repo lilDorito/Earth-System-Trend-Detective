@@ -1,3 +1,5 @@
+// HTTP client for the FastAPI backend
+
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
@@ -14,7 +16,10 @@ import type {
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -26,13 +31,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const detail = typeof body.detail === "string" ? body.detail : res.statusText;
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, typeof body.detail === "string" ? body.detail : res.statusText);
   }
   return res.json() as Promise<T>;
 }
 
-export const api = {
+export const httpApi = {
   health: () => request<{ status: string; data_mode: string; variables: number }>("/api/health"),
   variables: () => request<VariableInfo[]>("/api/variables"),
   regions: () => request<Record<string, Region>>("/api/regions"),
@@ -46,3 +50,5 @@ export const api = {
   analyze: (body: AnalyzeRequest) =>
     request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
 };
+
+export type Api = typeof httpApi;

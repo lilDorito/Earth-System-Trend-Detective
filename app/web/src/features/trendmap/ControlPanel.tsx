@@ -1,72 +1,135 @@
-import { Layers, TriangleAlert } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+// trend map layer controls and global mean
+
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Panel, PanelSection } from "@/components/ui/panel";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Status } from "@/components/ui/status";
 import { Switch } from "@/components/ui/switch";
+import { formatSigned } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import TrendChart from "./TrendChart";
-import { MAX_TREND } from "./trendGeo";
+import { MAX_TREND, TREND_GRADIENT } from "./trendLayer";
+
+const isPhone = () => window.matchMedia("(max-width: 639px)").matches;
+const ticks = [-MAX_TREND, -MAX_TREND / 2, 0, MAX_TREND / 2, MAX_TREND];
+
+function Toggle({ label, checked, disabled, onChange }: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <label className={cn("flex cursor-pointer items-center justify-between gap-3 text-sm", disabled && "cursor-default opacity-40")}>
+      {label}
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </label>
+  );
+}
 
 export default function ControlPanel() {
-  const { meta, globalMean, loading, error, showTrend, onlySignificant, setShowTrend, setOnlySignificant } =
-    useTrendMapStore();
+  const s = useTrendMapStore(
+    useShallow((s) => ({
+      meta: s.meta,
+      globalMean: s.globalMean,
+      loading: s.loading,
+      error: s.error,
+      showTrend: s.showTrend,
+      onlySignificant: s.onlySignificant,
+      hasSelection: s.selected !== null,
+      setShowTrend: s.setShowTrend,
+      setOnlySignificant: s.setOnlySignificant,
+    })),
+  );
+  const [open, setOpen] = useState(() => !isPhone());
+
+  useEffect(() => {
+    if (s.hasSelection && isPhone()) setOpen(false);
+  }, [s.hasSelection]);
 
   return (
-    <Card className="absolute left-4 top-4 w-[320px] max-w-[calc(100vw-2rem)] bg-card/85 backdrop-blur">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Layers className="size-4" />
-          Temperature trend
-        </CardTitle>
-        <CardDescription>
-          T2M, MERRA-2, °C per decade.{meta ? ` Period ${meta.years[0]}-${meta.years[1]}.` : ""}
-        </CardDescription>
-      </CardHeader>
+    <Panel className="absolute left-3 top-3 w-[300px] max-w-[calc(100%-1.5rem)] sm:left-4 sm:top-4">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">Temperature trend</h2>
+          <p className="text-xs text-muted-foreground">
+            MERRA-2 air temperature{s.meta && `, ${s.meta.years[0]} to ${s.meta.years[1]}`}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-mr-1.5"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          aria-label={open ? "Collapse panel" : "Expand panel"}
+        >
+          <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
+        </Button>
+      </div>
 
-      <CardContent className="flex flex-col gap-3">
-        {loading && <div className="text-sm text-muted-foreground">Loading data...</div>}
-        {error && (
-          <div className="flex items-start gap-2 text-sm text-destructive">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span>Could not load data: {error}. Is the API running?</span>
-          </div>
-        )}
-        {meta?.demo && (
-          <Badge variant="warning" className="w-fit">
-            demo data, not real
-          </Badge>
-        )}
+      {open && (
+        <>
+          {(s.error || s.meta?.demo) && (
+            <PanelSection>
+              {s.error ? <Alert>Could not load the trend map: {s.error}</Alert> : <Status tone="warning">synthetic field</Status>}
+            </PanelSection>
+          )}
 
-        <label className="flex items-center justify-between gap-3 text-sm">
-          Show trend layer
-          <Switch checked={showTrend} onCheckedChange={setShowTrend} />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm">
-          Significant only (FDR 5%)
-          <Switch checked={onlySignificant} onCheckedChange={setOnlySignificant} disabled={!showTrend} />
-        </label>
+          <PanelSection className="space-y-2.5">
+            <Toggle label="Trend layer" checked={s.showTrend} onChange={s.setShowTrend} />
+            <Toggle
+              label="Significant only (FDR 5%)"
+              checked={s.onlySignificant}
+              disabled={!s.showTrend}
+              onChange={s.setOnlySignificant}
+            />
+          </PanelSection>
 
-        {showTrend && (
-          <div>
-            <div className="h-3 rounded-full" style={{ background: "linear-gradient(90deg, #2166ac, #f7f7f7, #b2182b)" }} />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-              <span>-{MAX_TREND}</span>
-              <span>0</span>
-              <span>+{MAX_TREND}</span>
-            </div>
-          </div>
-        )}
+          {s.showTrend && (
+            <PanelSection>
+              <Label className="mb-2">°C per decade</Label>
+              <div className="h-1.5" style={{ background: TREND_GRADIENT }} />
+              <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
+                {ticks.map((t) => (
+                  <span key={t}>{t === 0 ? "0" : formatSigned(t, 1)}</span>
+                ))}
+              </div>
+            </PanelSection>
+          )}
 
-        {globalMean && (
-          <div>
-            <div className="mb-1 text-sm">
-              Global mean: <b>{globalMean.slope_decade.toFixed(2)} °C / decade</b> ({globalMean.trend})
-            </div>
-            <TrendChart years={globalMean.years} values={globalMean.values} fitted={globalMean.fitted} height={130} compact />
-          </div>
-        )}
-
-        <div className="text-xs text-muted-foreground">Click the globe to see the series and trend test at that point.</div>
-      </CardContent>
-    </Card>
+          <PanelSection>
+            {s.loading || !s.globalMean ? (
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Global mean</Label>
+                  <span className="font-mono text-[13px] tabular-nums">
+                    {formatSigned(s.globalMean.slope_decade)} <span className="text-muted-foreground">°C/dec</span>
+                  </span>
+                </div>
+                <TrendChart
+                  years={s.globalMean.years}
+                  values={s.globalMean.values}
+                  fitted={s.globalMean.fitted}
+                  height={100}
+                  compact
+                />
+              </>
+            )}
+          </PanelSection>
+        </>
+      )}
+    </Panel>
   );
 }

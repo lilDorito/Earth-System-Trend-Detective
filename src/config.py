@@ -1,4 +1,4 @@
-# settings from env + YAML configs
+# settings from .env and YAML configs
 
 import os
 from functools import lru_cache
@@ -14,8 +14,7 @@ load_dotenv(ROOT / ".env")
 
 
 class Settings:
-    # "mock" = every variable comes from the synthetic source (no network, no token)
-    # "live" = each variable uses the source set in configs/variables.yaml
+    # "mock" or "live"
     data_mode: str = os.environ.get("DATA_MODE", "mock")
     earthdata_token: str | None = os.environ.get("EARTHDATA_TOKEN") or None
     cache_dir: Path = ROOT / os.environ.get("CACHE_DIR", "data/cache")

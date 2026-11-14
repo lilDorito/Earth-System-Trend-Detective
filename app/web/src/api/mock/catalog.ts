@@ -1,0 +1,132 @@
+// copy of configs/*.yaml for the mock
+
+import type { Demo, Region, RegionType, VariableInfo } from "../types";
+
+export const variables: VariableInfo[] = [
+  {
+    key: "air_temperature",
+    variable_id: "M2TMNXSLV_5_12_4_T2M",
+    source: "mock",
+    name: "Air temperature (2 m)",
+    short_definition: "How warm the air is about two meters above the ground, the temperature you feel outside.",
+    units_raw: "K",
+    units: "°C",
+    conversion: "K_to_C",
+    resolution: "monthly",
+    coverage_start: "1980-01-01",
+    coverage_end: null,
+    land_only: false,
+    region_tags: ["city", "farmland", "mountains", "coast", "desert", "forest"],
+  },
+  {
+    key: "soil_moisture",
+    variable_id: "GLDAS_NOAH025_M_2_1_SoilMoi0_10cm_inst",
+    source: "mock",
+    name: "Soil moisture (top 10 cm)",
+    short_definition: "How much water is held in the top layer of soil, which plants and crops depend on.",
+    units_raw: "kg m-2",
+    units: "kg/m²",
+    conversion: "identity",
+    resolution: "monthly",
+    coverage_start: "2000-01-01",
+    coverage_end: null,
+    land_only: true,
+    region_tags: ["farmland", "forest", "desert"],
+  },
+  {
+    key: "precipitation",
+    variable_id: "GPM_3IMERGM_07_precipitation",
+    source: "mock",
+    name: "Precipitation",
+    short_definition: "The total amount of rain and snow that falls, measured as the depth of water it would make.",
+    units_raw: "mm/hr",
+    units: "mm/month",
+    conversion: "identity",
+    resolution: "monthly",
+    coverage_start: "2000-06-01",
+    coverage_end: null,
+    land_only: false,
+    region_tags: ["farmland", "forest", "mountains", "coast", "desert"],
+  },
+  {
+    key: "no2_column",
+    variable_id: "OMNO2d_tropospheric_column",
+    source: "mock",
+    name: "Nitrogen dioxide (NO₂)",
+    short_definition: "A polluting gas mostly from traffic, power plants and industry, measured in the air column above the ground.",
+    units_raw: "molecules cm-2",
+    units: "molecules/cm²",
+    conversion: "identity",
+    resolution: "monthly",
+    coverage_start: "2004-10-01",
+    coverage_end: null,
+    land_only: false,
+    region_tags: ["city"],
+  },
+];
+
+export const regions: Record<string, Region> = {
+  kyiv: { name: "Kyiv", location: { type: "point", lat: 50.45, lon: 30.52 } },
+  kharkiv: { name: "Kharkiv", location: { type: "point", lat: 49.99, lon: 36.23 } },
+  odesa: { name: "Odesa", location: { type: "point", lat: 46.48, lon: 30.73 } },
+  lviv: { name: "Lviv", location: { type: "point", lat: 49.84, lon: 24.03 } },
+  kherson_south: { name: "Southern Ukraine (Kherson area)", location: { type: "point", lat: 46.64, lon: 32.62 } },
+  volyn_northwest: { name: "Northwestern Ukraine (Volyn area)", location: { type: "point", lat: 50.75, lon: 25.33 } },
+  ukraine: { name: "Ukraine", location: { type: "bbox", west: 22.1, south: 44.3, east: 40.2, north: 52.4 } },
+};
+
+export const regionTypes: Record<string, RegionType> = {
+  city: { label: "A city", hint: "Cities trap heat and concentrate pollution.", suggest: ["air_temperature", "no2_column"] },
+  farmland: {
+    label: "Farmland",
+    hint: "Crops depend on rain and soil water.",
+    suggest: ["soil_moisture", "precipitation", "air_temperature"],
+  },
+  mountains: {
+    label: "Mountains",
+    hint: "Snow and temperature change fast at altitude.",
+    suggest: ["air_temperature", "precipitation"],
+  },
+  coast: { label: "A coast", hint: "Coasts respond to both land and sea.", suggest: ["air_temperature", "precipitation"] },
+  forest: { label: "A forest", hint: "Forests depend on water in the soil.", suggest: ["soil_moisture", "precipitation"] },
+  desert: {
+    label: "A desert or dry steppe",
+    hint: "Small changes in water matter a lot here.",
+    suggest: ["precipitation", "soil_moisture", "air_temperature"],
+  },
+};
+
+export const demos: Demo[] = [
+  {
+    id: "kyiv_warming",
+    title: "Is Kyiv getting warmer?",
+    story: "Monthly air temperature over Kyiv since 1980, with the seasonal cycle removed.",
+    variable: "air_temperature",
+    region: "kyiv",
+    start: "1980-01-01",
+    end: "2026-09-01",
+    mode: "trend",
+  },
+  {
+    id: "south_vs_northwest_soil",
+    title: "Is the south of Ukraine drying out?",
+    story: "Same variable, two regions. Compare the trends to see if they differ in direction or strength.",
+    variable: "soil_moisture",
+    region: "kherson_south",
+    compare_region: "volyn_northwest",
+    start: "2000-01-01",
+    end: "2026-09-01",
+    mode: "trend",
+  },
+  {
+    id: "kyiv_no2_2022",
+    title: "What happened to Kyiv's air after February 2022?",
+    story: "A step change, not a gradual trend, so we compare the mean before and after the date.",
+    variable: "no2_column",
+    region: "kyiv",
+    start: "2015-01-01",
+    end: "2026-09-01",
+    mode: "event",
+    event_date: "2022-02-24",
+  },
+];

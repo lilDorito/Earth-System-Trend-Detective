@@ -3,11 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- browser bar colour; lib/theme.ts switches it to pink when the marshmallow theme is on screen -->
     <meta name="theme-color" content="#11151d" />
     <meta name="description" content="Pick any place on Earth, choose a variable and find out whether it is really changing." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- the saved theme before the first paint, so a marshmallow phone never flashes dark (lib/theme.ts owns it after) -->
+    <script>
+      try {
+        if (localStorage.getItem("theme") === "marshmallow") {
+          document.documentElement.dataset.theme = "marshmallow";
+          if (matchMedia("(max-width: 639px)").matches) document.querySelector('meta[name="theme-color"]').content = "#fce6e6";
+        }
+      } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-title" content="Trend Detective" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />

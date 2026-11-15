@@ -8,6 +8,7 @@ import { Crosshair, Flag, Layers, Square, SquareDashed, X } from "lucide-react";
 import type { BBox, Boundary } from "@/api/types";
 import { AdditiveBlending, BackSide, BufferGeometry, CanvasTexture, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
+import { cssVar, usePhoneTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import AdminBorders from "./AdminBorders";
 import AreaFill from "./AreaFill";
@@ -18,6 +19,7 @@ import BoxDraw from "./BoxDraw";
 import Outline from "./Outline";
 import DetailTiles from "./DetailTiles";
 import { useOutline } from "./useOutline";
+import { loadLandMask } from "./landMask";
 import { latLonToVector, vectorToLatLon } from "./geo";
 
 type LatLon = { lat: number; lon: number };
@@ -214,6 +216,88 @@ function SecretComet({ onOpen }: { onOpen: () => void }) {
         </sprite>
       ))}
     </group>
+  );
+}
+
+// marshmallow theme: the Earth in candy colours, pink seas and buttery land along the real coastline, with a
+// little relief from the satellite imagery (mountains, deserts and ice lighter, forests darker). Drawn opaque just
+// over the imagery; the trend layer draws its own muted ground, so this is only used without it
+const MARSHMALLOW_SEA = [0.965, 0.753, 0.776]; // #f6c0c6, the warm pink of the Investigate button, sRGB
+const MARSHMALLOW_LAND = [0.976, 0.871, 0.588]; // #f9de96, sRGB
+
+const marshmallowShader = {
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vDir = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D earth;
+    uniform sampler2D landMask;
+    uniform vec3 sea;
+    uniform vec3 land;
+    varying vec3 vDir;
+
+    vec3 toSrgb(vec3 c) {
+      return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+    }
+
+    void main() {
+      // longitude and latitude from the surface position, as the trend layer does (uv breaks down at the poles)
+      vec3 dir = normalize(vDir);
+      vec2 lonLat = vec2(degrees(atan(dir.z, -dir.x)) - 180.0, degrees(asin(clamp(dir.y, -1.0, 1.0))));
+      lonLat.x += lonLat.x < -180.0 ? 360.0 : 0.0;
+      vec2 uv = vec2((lonLat.x + 180.0) / 360.0, (lonLat.y + 90.0) / 180.0);
+      // derivatives across the 180 degree seam without the jump, so no seam line
+      vec2 dx = dFdx(uv);
+      vec2 dy = dFdy(uv);
+      dx.x -= floor(dx.x + 0.5);
+      dy.x -= floor(dy.x + 0.5);
+      float isLand = textureGrad(landMask, uv, dx, dy).r;
+      float lum = dot(toSrgb(textureGrad(earth, uv, dx, dy).rgb), vec3(0.2126, 0.7152, 0.0722));
+      // relief: the imagery's brightness nudges the flat candy colour a little, never into dusky tones
+      vec3 base = mix(sea, land, isLand);
+      vec3 color = clamp(base * (0.94 + 0.16 * sqrt(lum)), 0.0, 1.0);
+      gl_FragColor = vec4(color, 1.0);
+    }`,
+};
+
+function MarshmallowEarth({ earth }: { earth: Texture }) {
+  const invalidate = useThree((s) => s.invalidate);
+  const [landMask, setLandMask] = useState<Texture | null>(null);
+  useEffect(() => {
+    let active = true;
+    void loadLandMask().then((mask) => {
+      if (!active) return;
+      setLandMask(mask);
+      invalidate();
+    });
+    return () => {
+      active = false;
+    };
+  }, [invalidate]);
+  const material = useMemo(
+    () => ({
+      ...marshmallowShader,
+      uniforms: {
+        earth: { value: earth },
+        landMask: { value: null as Texture | null },
+        sea: { value: new Vector3(...MARSHMALLOW_SEA) },
+        land: { value: new Vector3(...MARSHMALLOW_LAND) },
+      },
+    }),
+    [earth],
+  );
+  material.uniforms.landMask.value = landMask;
+  // until the coastline mask is ready the real imagery shows, then the candy globe takes over
+  if (!landMask) return null;
+  return (
+    <mesh raycast={() => null}>
+      {/* fine enough that its flat facets stay above the imagery everywhere; coarser ones dip under it and flicker */}
+      <sphereGeometry args={[1.0005, 256, 128]} />
+      <shaderMaterial args={[material]} toneMapped={false} />
+    </mesh>
   );
 }
 
@@ -509,6 +593,8 @@ export default function GlobeCanvas({
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const hint = (touch && touchHint) || mouseHint;
   const hasSelection = !!marker || !!outline?.length;
+  const phoneTheme = usePhoneTheme();
+  const sky = useMemo(() => cssVar("--globe-sky") || "#0a0b0d", [phoneTheme]);
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
   const insets = { "--left": `${leftInset}px`, "--right": `${rightInset}px` } as CSSProperties;
@@ -553,11 +639,14 @@ export default function GlobeCanvas({
         <AdaptiveResolution />
         <CameraDistance target={distance} />
         <IdleSpin enabled={autoRotate} />
-        <color attach="background" args={["#0a0b0d"]} />
-        <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
+        {/* the theme's sky: deep space, or marshmallow pink on phones, where stars would only look like dust */}
+        <color key={sky} attach="background" args={[sky]} />
+        {!phoneTheme && <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />}
         <SecretComet onOpen={() => setSecretOpen(true)} />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
-        {detail && texture && <DetailTiles />}
+        {/* the candy globe replaces the imagery, so the sharper satellite tiles are not fetched under it */}
+        {detail && texture && !phoneTheme && <DetailTiles />}
+        {phoneTheme && detail && texture && <MarshmallowEarth earth={texture} />}
         {children}
         {onCountry && <AdminBorders enabled={tool === "country"} />}
         {outline && outline.length > 0 && <AreaFill rings={outline} color={0xfbbf24} opacity={0.16} />}
@@ -678,7 +767,7 @@ export default function GlobeCanvas({
         ref={readout}
         style={insets}
         className={cn(
-          "pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] font-mono text-[11px] tabular-nums text-muted-foreground [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)] sm:bottom-4 sm:left-4",
+          "globe-hint pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] font-mono text-[11px] tabular-nums text-muted-foreground [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)] sm:bottom-4 sm:left-4",
           paneled &&
             "sm:bottom-auto sm:left-[calc((var(--left)+100%)/2)] sm:top-4 sm:max-w-[40%] sm:-translate-x-1/2 sm:text-center lg:left-[calc((var(--left)+100%-var(--right))/2)] lg:top-14",
         )}

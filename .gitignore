@@ -5,6 +5,7 @@ data/grid/
 merra2/
 data/ncei/
 data/ocean/
+data/extra/
 data/nasa_grid/
 data/hf/
 *.nc

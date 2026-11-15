@@ -725,15 +725,22 @@ def run_oceansoda(a):
     return True
 
 
+def oscar_field(da, lat_da, lon_da):
+    da = da.squeeze(drop=True)
+    return da.transpose(lat_da.dims[0], lon_da.dims[0]).values.astype("float64")
+
+
 def proc_oscar_month(files):
     s_u = s_v = n_u = n_v = None
     lat = lon = None
     for f in files:
         ds = xr.open_dataset(f)
-        u = np.squeeze(ds[pick_var(ds, ["u"])].values).astype("float64")
-        v = np.squeeze(ds[pick_var(ds, ["v"])].values).astype("float64")
-        lat = ds["lat"].values if "lat" in ds else ds["latitude"].values
-        lon = ds["lon"].values if "lon" in ds else ds["longitude"].values
+        lat_da = ds["lat"] if "lat" in ds.variables else ds["latitude"]
+        lon_da = ds["lon"] if "lon" in ds.variables else ds["longitude"]
+        u = oscar_field(ds[pick_var(ds, ["u"])], lat_da, lon_da)
+        v = oscar_field(ds[pick_var(ds, ["v"])], lat_da, lon_da)
+        lat = lat_da.values
+        lon = lon_da.values
         ds.close()
         if s_u is None:
             s_u, s_v = np.zeros_like(u), np.zeros_like(v)
@@ -752,7 +759,7 @@ def proc_oscar_month(files):
 OSCAR_LOCK = threading.Lock()
 
 
-def oscar_month(earthaccess, y, m, keep_raw):
+def oscar_month(earthaccess, y, m, keep_raw, step=1):
     last = pd.Timestamp(year=y, month=m, day=1).days_in_month
     res = earthaccess.search_data(
         short_name="OSCAR_L4_OC_FINAL_V2.0", temporal=(f"{y}-{m:02d}-01", f"{y}-{m:02d}-{last:02d}")
@@ -760,6 +767,7 @@ def oscar_month(earthaccess, y, m, keep_raw):
     if not res:
         log(f"  oscar {y}-{m:02d}: no granules")
         return True, True, None, None
+    res = res[:: max(1, step)]
     tmp = RAW / "oscar" / f"{y}{m:02d}"
     tmp.mkdir(parents=True, exist_ok=True)
     out = (False, False, None, None)
@@ -808,7 +816,7 @@ def run_oscar(a):
     allok = True
     ex = ThreadPoolExecutor(max_workers=workers)
     try:
-        futs = {ex.submit(oscar_month, earthaccess, y, m, a.keep_raw): (y, m) for y, m in tasks}
+        futs = {ex.submit(oscar_month, earthaccess, y, m, a.keep_raw, max(1, int(getattr(a, "oscar_step", 1)))): (y, m) for y, m in tasks}
         for f in as_completed(futs):
             y, m = futs[f]
             ok, empty, u, v = f.result()
@@ -1022,6 +1030,9 @@ def main():
     r.add_argument("--source", help="comma-separated: " + ",".join(RUNNERS))
     r.add_argument(
         "--workers", type=int, default=6, help="how many OSCAR months to download in parallel (default 6)"
+    )
+    r.add_argument(
+        "--oscar-step", type=int, default=1, help="use every Nth daily OSCAR file (5 = about 6 files per month, 5x faster)"
     )
     r.add_argument("--keep-raw", action="store_true", help="keep raw files after processing")
     r.add_argument("--passes", type=int, default=3, help="how many times to retry failed sources (default 3)")

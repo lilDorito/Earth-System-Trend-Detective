@@ -1,6 +1,6 @@
 # Data ingestion scripts
 
-Three command-line tools that build the local datasets for the project. All outputs go to `data/` (git-ignored); the folders can be moved with `NCEI_DIR`, `OCEAN_DIR` and `NASA_GRID_DIR`.
+Three command-line tools that build the local datasets for the project. All outputs go to `data/` (git-ignored); the folders can be moved with `NCEI_DIR`, `OCEAN_DIR`, `EXTRA_DIR` and `NASA_GRID_DIR`.
 
 ```
 python -m pip install -r requirements-ingest.txt
@@ -11,7 +11,7 @@ Secrets are read from `.env` in the project root (or from environment variables)
 | Variable | Used by | How to get it |
 |---|---|---|
 | `NCEI_TOKEN` | `ncei.py` | https://www.ncei.noaa.gov/cdo-web/token (5 requests/s, 10 000/day per token) |
-| `EARTHDATA_TOKEN` | `ocean.py` (chl, grace, oscar), `nasa_grid.py` | https://urs.earthdata.nasa.gov, Generate Token (expires, renew on 401/403) |
+| `EARTHDATA_TOKEN` | `ocean.py` (chl, grace, oscar), `extra.py` (aod, ozone), `nasa_grid.py` | https://urs.earthdata.nasa.gov, Generate Token (expires, renew on 401/403) |
 | `CMEMS_USERNAME`, `CMEMS_PASSWORD` | `ocean.py` (sealevel) | free account at https://data.marine.copernicus.eu |
 
 ## NCEI station data (`ncei.py`)
@@ -50,10 +50,41 @@ Monthly 1x1 degree NetCDF grids, 2000-2025, one file per variable in `data/ocean
 python scripts/ingest/ocean.py list                              # variables and sources
 python scripts/ingest/ocean.py run                               # everything, then merge
 python scripts/ingest/ocean.py run --source oscar --workers 8    # one source, 8 months in parallel
+python scripts/ingest/ocean.py run --source oscar --workers 8 --oscar-step 5   # every 5th daily file, about 5x faster
+python scripts/ingest/derive_current.py                          # current_speed.nc and current_direction.nc from u and v
 python scripts/ingest/ocean.py merge                             # rebuild the merged files and catalog.csv
 ```
 
 `run` checks credentials and disk space, skips sources it cannot run with a clear message, retries failing sources (`--passes`), writes `data/ocean/run.log` and prints a summary. Raw files are deleted after processing (`--keep-raw` keeps them). If a server is down, rerun the same command later: finished years are skipped. A file that cannot be downloaded automatically (for example OceanSODA) can be placed by hand into `data/ocean/raw/<source>/`.
+
+OSCAR files store `u` and `v` as `(time, longitude, latitude)`; the script transposes them by dimension name. `derive_current.py` adds `current_speed` (m/s, `sqrt(u^2 + v^2)` of the monthly mean vector) and `current_direction` (degrees clockwise from north, direction the water flows towards). The monthly mean vector understates the mean speed where the current changes direction.
+
+## Extra grids: aerosols, ozone, vegetation, fires, CO2 (`extra.py`)
+
+Monthly 1x1 degree NetCDF grids (same layout as the ocean grids, 2000-2025) in `data/extra/processed/<variable>.nc`, plus `co2_monthly.csv` and `catalog.csv`.
+
+| Output | Description | Source | Access | Period |
+|---|---|---|---|---|
+| `aod` | total aerosol optical thickness at 550 nm (`TOTEXTTAU`) | MERRA-2 `M2TMNXAER` v5.12.4, NASA GES DISC | `EARTHDATA_TOKEN` | 2000-2025 |
+| `to3` | total column ozone, DU (`TO3`) | MERRA-2 `M2TMNXCHM` v5.12.4, NASA GES DISC | `EARTHDATA_TOKEN` | 2000-2025 |
+| `ndvi` | NDVI | MODIS Terra MOD13C2 v061, NetCDF mirror of the University of Hamburg ICDC (https://icdc.cen.uni-hamburg.de/thredds/catalog/ftpthredds/modis_terra_vegetationindex/catalog.html) | public | 2000-02 to 2025-07 |
+| `burned_area` | burned area, km2 per 1 degree cell per month | GFED5 burned area, Chen et al. 2023 (https://zenodo.org/records/7668424, `BA.zip`) | public | 2000-2020 |
+| `co2_monthly.csv` | CO2, ppm: global marine surface and Mauna Loa | NOAA GML (`co2_mm_gl`, `co2_mm_mlo`) | public | 2000-2025 |
+
+```
+python scripts/ingest/extra.py list
+python scripts/ingest/extra.py run --source co2,fires
+python scripts/ingest/extra.py run --source aod,ozone --workers 3
+python scripts/ingest/extra.py run --source ndvi --years 2000-2012    # windows can run in two terminals at once
+python scripts/ingest/extra.py status                                 # progress per variable and the last log lines
+python scripts/ingest/extra.py merge                                  # rebuild <variable>.nc and catalog.csv from the monthly cache
+```
+
+Every finished month is cached in `data/extra/processed/months/<variable>/`, so a run can be stopped and repeated; `run.log` and `processed/status.json` show the progress and ETA. Months missing at the source get a `.none` marker (delete it to try that month again).
+
+MERRA-2 downloads need the GES DISC application to be authorized for your Earthdata account (Applications, Authorized Apps), otherwise every file fails with `EulaNotAccepted`. NDVI is read through OPeNDAP with every `--stride`-th 0.05 degree cell (default 5) so the 726 MB monthly files are not downloaded in full; if OPeNDAP fails the script downloads the file, processes it and deletes it. Aerosols, ozone and NDVI are averaged into 1 degree cells, burned area is summed.
+
+Caveats: burned area ends in 2020, NDVI has no January 2000 and ends in 2025-07. MERRA-2 aerosol and ozone trends partly reflect changes in the assimilated observations, so check regional trends (the Southern Ocean aerosol increase, the ozone peak in 2024) before interpreting them. Analysis figures: `docs/figures/extra/`.
 
 ## NASA land and atmosphere grids (`nasa_grid.py`)
 

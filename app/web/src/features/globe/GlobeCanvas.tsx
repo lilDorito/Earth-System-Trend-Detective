@@ -73,13 +73,16 @@ function Atmosphere() {
   );
 }
 
-// slower rotation and zoom close to the surface
-function ZoomFeel() {
+// orbit controls turn 2π·rotateSpeed per screen height dragged; this rate keeps the surface under the finger
+const TRACK_FINGER = (2 * Math.tan(((FOV / 2) * Math.PI) / 180)) / (2 * Math.PI);
+
+// slower rotation and zoom close to the surface; on touch screens the globe follows the finger exactly
+function ZoomFeel({ touch }: { touch: boolean }) {
   const controls = useThree((s) => s.controls) as { rotateSpeed: number; zoomSpeed: number } | null;
   useFrame(({ camera }) => {
     if (!controls) return;
     const altitude = camera.position.length() - 1;
-    controls.rotateSpeed = Math.min(0.5, 0.06 + altitude * 0.25);
+    controls.rotateSpeed = touch ? TRACK_FINGER * altitude : Math.min(0.5, 0.06 + altitude * 0.25);
     controls.zoomSpeed = Math.min(1, 0.35 + altitude * 0.35);
   });
   return null;
@@ -346,11 +349,12 @@ export default function GlobeCanvas({
         <Atmosphere />
         <FitCamera />
         <FlyTo target={focus} />
-        <ZoomFeel />
+        <ZoomFeel touch={touch} />
         <OrbitControls
           makeDefault
           enablePan={false}
-          enableDamping
+          // no glide on touch: the globe stays under the finger and stops where it lets go
+          enableDamping={!touch}
           rotateSpeed={0.5}
           minDistance={1.12}
           maxDistance={7}

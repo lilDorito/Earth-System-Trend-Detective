@@ -327,6 +327,27 @@ def wind(start: int | None = None, end: int | None = None):
     }
 
 
+@router.get("/co2")
+def co2():
+    # annual mean atmospheric CO2 and its Sen slope, context for the ocean carbon variables (pCO2, pH)
+    if settings.data_mode != "live":
+        raise HTTPException(404, "The CO2 series needs DATA_MODE=live")
+    try:
+        frame = dataset.co2()
+    except dataset.DatasetError as e:
+        raise HTTPException(503, str(e))
+    annual = frame.assign(year=frame["time"].dt.year).groupby("year").agg(ppm=("co2_global_ppm", "mean"), months=("co2_global_ppm", "count"))
+    annual = annual[annual["months"] == 12]
+    years = annual.index.to_numpy(dtype=np.float64)
+    slope, _ = _sen(years, annual["ppm"].to_numpy(dtype=np.float64))
+    return {
+        "source": "NOAA GML global marine surface mean",
+        "years": [int(y) for y in years],
+        "ppm": _clean(annual["ppm"], 2),
+        "slope_decade": slope * 10,
+    }
+
+
 def _has_regions() -> bool:
     # a dataset revision built before regions.py keeps the preset boxes working
     try:

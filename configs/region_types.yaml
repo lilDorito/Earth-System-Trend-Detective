@@ -4,11 +4,11 @@ region_types:
   city:
     label: A city
     hint: Cities trap heat and concentrate pollution.
-    suggest: [air_temperature, no2_column, land_surface_temperature, humidity]
+    suggest: [air_temperature, no2_column, land_surface_temperature, humidity, aerosols]
   farmland:
     label: Farmland
     hint: Crops depend on rain and soil water.
-    suggest: [soil_moisture, precipitation, air_temperature, root_zone_moisture, evapotranspiration]
+    suggest: [soil_moisture, precipitation, air_temperature, root_zone_moisture, evapotranspiration, vegetation]
   mountains:
     label: Mountains
     hint: Snow and temperature change fast at altitude.
@@ -20,8 +20,8 @@ region_types:
   forest:
     label: A forest
     hint: Forests depend on water in the soil.
-    suggest: [soil_moisture, precipitation, root_zone_moisture, evapotranspiration]
+    suggest: [soil_moisture, precipitation, root_zone_moisture, evapotranspiration, vegetation, burned_area]
   desert:
     label: A desert or dry steppe
     hint: Small changes in water matter a lot here.
-    suggest: [precipitation, soil_moisture, air_temperature, land_surface_temperature]
+    suggest: [precipitation, soil_moisture, air_temperature, land_surface_temperature, aerosols, vegetation]

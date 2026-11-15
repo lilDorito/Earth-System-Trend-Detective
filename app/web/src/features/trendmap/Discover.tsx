@@ -18,7 +18,7 @@ import { readQuestion } from "./places";
 const chip =
   "h-7 pointer-coarse:h-9 cursor-pointer rounded-sm border border-input px-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-const EXAMPLES = ["drought in Africa", "sea ice in the Arctic", "rain in India", "посуха в Україні"];
+const EXAMPLES = ["droughts in America", "sea ice in the Arctic", "fires in Australia", "rain in India"];
 
 export function AskBox() {
   const s = useTrendMapStore(
@@ -29,9 +29,14 @@ export function AskBox() {
 
   const ask = async (question: string) => {
     if (!question.trim()) return;
-    const { variable, place } = readQuestion(question, s.variables, await loadBoundaries().catch(() => []));
+    const { variable, place, unknownPlace } = readQuestion(question, s.variables, await loadBoundaries().catch(() => []));
+    // a place that matched nothing is reported instead of guessed at
+    if (unknownPlace && !place) {
+      setAnswer(`No country or region called "${unknownPlace}". Try a country, a continent or an area such as the Sahel or the Arctic.`);
+      return;
+    }
     if (!variable && !place) {
-      setAnswer("Did not catch a topic or a place. Try a word like rain, drought, ice or warming, and a country or continent.");
+      setAnswer("Did not catch a topic or a place. Try a word like rain, drought, ice, fire or warming, and a country or continent.");
       return;
     }
     const name = variable ? plainName(s.variables.find((v) => v.key === variable)?.name ?? variable) : null;

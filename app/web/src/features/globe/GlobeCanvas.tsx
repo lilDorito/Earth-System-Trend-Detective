@@ -327,7 +327,7 @@ function Loading({ label }: { label: string }) {
       transition={{ duration: 0.2 }}
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <div className="w-48 rounded-md border bg-card/90 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground shadow-lg shadow-black/40 backdrop-blur">
+      <div className="min-w-48 max-w-[min(20rem,calc(100%-2rem))] rounded-md border bg-card/90 px-4 py-3 font-mono text-[11px] uppercase leading-relaxed tracking-[0.06em] text-muted-foreground shadow-lg shadow-black/40 backdrop-blur">
         {label}
         <div className="mt-2 h-px overflow-hidden bg-border">
           <div className="h-full w-2/5 animate-scan bg-primary" />

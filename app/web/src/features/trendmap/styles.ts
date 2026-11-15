@@ -35,6 +35,12 @@ const CHANGE = {
   wind: [[225, 190, 250], [170, 110, 210], [115, 55, 150], [85, 41, 112], [38, 38, 44], [51, 97, 37], [70, 130, 45], [130, 190, 70], [210, 240, 140]],
   // lower lavender to higher orange
   pressure: [[200, 185, 245], [140, 120, 210], [85, 65, 150], [63, 48, 112], [38, 38, 44], [133, 75, 27], [180, 100, 30], [240, 155, 50], [255, 215, 140]],
+  // clearing sky blue to hazier amber
+  aerosol: [[175, 225, 255], [90, 170, 230], [45, 110, 180], [40, 75, 125], [38, 38, 44], [120, 85, 40], [175, 120, 45], [225, 170, 70], [250, 225, 150]],
+  // thinning ozone violet to thickening teal
+  ozone: [[230, 175, 255], [180, 105, 225], [125, 55, 170], [90, 45, 125], [38, 38, 44], [30, 95, 100], [35, 145, 145], [80, 200, 190], [175, 245, 230]],
+  // fewer fires slate blue to more fires red and orange
+  fire: [[185, 210, 235], [115, 150, 190], [70, 95, 135], [55, 65, 95], [38, 38, 44], [120, 35, 30], [185, 45, 35], [235, 95, 40], [255, 190, 90]],
 } satisfies Record<string, Stops>;
 
 // sequential, for the values view; cmocean-like, perceptually even
@@ -51,6 +57,14 @@ const VALUES = {
   plasma: [[13, 8, 135], [84, 2, 163], [139, 10, 165], [185, 50, 137], [219, 92, 104], [244, 136, 73], [254, 188, 43], [240, 249, 33]],
   speed: [[30, 30, 60], [40, 70, 110], [40, 115, 130], [60, 155, 120], [130, 190, 100], [210, 215, 110], [255, 245, 180]],
   pressure: [[60, 40, 110], [110, 90, 170], [170, 160, 210], [230, 225, 230], [250, 205, 150], [235, 150, 60], [170, 80, 10]],
+  // clean air dark blue to thick haze yellow-brown
+  haze: [[20, 30, 60], [40, 70, 110], [90, 110, 120], [150, 135, 100], [200, 160, 80], [235, 195, 90], [255, 235, 170]],
+  // ozone hole violet through blue and teal to high-latitude yellow
+  ozone: [[60, 20, 100], [95, 45, 160], [60, 90, 190], [40, 145, 185], [60, 190, 150], [170, 220, 100], [250, 235, 120]],
+  // bare ground tan to dense forest green
+  vegetation: [[120, 95, 70], [175, 150, 105], [215, 200, 130], [170, 200, 95], [100, 170, 70], [40, 130, 55], [15, 85, 45]],
+  // no fire black-brown to red, orange and yellow
+  fire: [[25, 15, 20], [80, 20, 25], [145, 30, 30], [205, 60, 30], [240, 120, 40], [252, 185, 70], [255, 240, 170]],
 } satisfies Record<string, Stops>;
 
 // process fingerprints: share of a scenario's variables that match, from none (dark) to all (hot)
@@ -61,6 +75,7 @@ export type VariableStyle = {
   values: Stops;
   signed?: boolean; // values centred on zero (anomalies, wind components): change palette, symmetric range
   log?: boolean; // values on a log scale
+  logFloor?: number; // smallest value shown on a log scale; zero and below take its colour (default 0.001)
   isobars?: boolean; // contour lines with H and L instead of filled bands
   wind?: boolean; // particles drift along the mean 10 m wind
   edge?: number; // values view: a line at this value, first year against the year shown (sea ice edge)
@@ -111,6 +126,10 @@ const STYLES: Record<string, VariableStyle> = {
   merra2_wind10m: { ...windSpeed, wind: true },
   gldas_wind: windSpeed,
   merra2_ps: { change: CHANGE.pressure, values: VALUES.pressure, isobars: true, up: "rises" },
+  aod: { change: CHANGE.aerosol, values: VALUES.haze, log: true, logFloor: 0.01, up: "gets hazier" },
+  to3: { change: CHANGE.ozone, values: VALUES.ozone, up: "gains ozone" },
+  ndvi: { change: CHANGE.chlorophyll, values: VALUES.vegetation, up: "greens" },
+  burned_area: { change: CHANGE.fire, values: VALUES.fire, log: true, logFloor: 0.1, up: "burns more" },
 };
 
 const FALLBACK: VariableStyle = { change: CHANGE.heat, values: VALUES.thermal, up: "trends up" };
@@ -152,6 +171,10 @@ export function valueRange(style: VariableStyle, range: [number, number] | undef
     const max = Math.max(Math.abs(lo), Math.abs(hi)) || 1;
     return [-max, max];
   }
-  if (style.log) return [Math.log10(Math.max(lo, 1e-3)), Math.log10(Math.max(hi, lo * 10, 1e-2))];
+  if (style.log) {
+    const floor = style.logFloor ?? 1e-3;
+    const low = Math.max(lo, floor);
+    return [Math.log10(low), Math.log10(Math.max(hi, low * 10))];
+  }
   return hi > lo ? [lo, hi] : [lo, lo + 1];
 }

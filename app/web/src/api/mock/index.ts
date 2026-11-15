@@ -36,6 +36,7 @@ export const mockApi: Api = {
   insightScan: () => unavailable(),
   insightDiagnose: () => unavailable(),
   insightScenarios: () => respond(() => []),
+  trendCo2: () => unavailable(),
   insightHotspots: () => unavailable(),
   insightDivergence: () => unavailable(),
   trendRegion: (_, region) => respond(() => trendRegion(region)),

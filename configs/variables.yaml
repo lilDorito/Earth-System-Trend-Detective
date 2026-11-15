@@ -488,3 +488,65 @@ variables:
     coverage_start: 2002-04-01
     land_only: false
     region_tags: [coast]
+
+  - key: aerosols
+    variable_id: aod
+    source: hf_grid
+    name: Aerosols (haze, dust, smoke)
+    short_definition: "How hazy the air is: dust, smoke, sea salt and pollution particles that dim sunlight; 0 is perfectly clear."
+    units_raw: "1"
+    units: "AOD"
+    conversion: identity # the dataset reader applies the display factor
+    resolution: monthly
+    group: atmosphere
+    typical_range: [0.014, 0.435]
+    coverage_start: 2000-01-01
+    land_only: false
+    region_tags: [city, desert]
+
+  - key: ozone
+    variable_id: to3
+    source: hf_grid
+    name: Ozone layer (total column)
+    short_definition: "All the ozone above a place in Dobson units, mostly the stratospheric layer that blocks the Sun's ultraviolet light."
+    units_raw: DU
+    units: "DU"
+    conversion: identity # the dataset reader applies the display factor
+    resolution: monthly
+    group: atmosphere
+    typical_range: [203.0, 429.0]
+    coverage_start: 2000-01-01
+    land_only: false
+    region_tags: []
+
+  - key: vegetation
+    variable_id: ndvi
+    source: hf_grid
+    name: Vegetation greenness (NDVI)
+    short_definition: "How green the land looks from space: near 0 for bare ground, up to about 0.9 for dense forest."
+    units_raw: "1"
+    units: "NDVI"
+    conversion: identity # the dataset reader applies the display factor
+    resolution: monthly
+    group: land
+    typical_range: [-0.067, 0.837]
+    coverage_start: 2001-01-01
+    coverage_end: 2024-12-31
+    land_only: true
+    region_tags: [farmland, forest, desert]
+
+  - key: burned_area
+    variable_id: burned_area
+    source: hf_grid
+    name: Burned area (fires)
+    short_definition: "Area burned by fires per 1-degree cell and month, mapped from satellites (GFED5, until 2020)."
+    units_raw: km2/month
+    units: "km²/month"
+    conversion: identity # the dataset reader applies the display factor
+    resolution: monthly
+    group: land
+    typical_range: [0.0, 271.0]
+    coverage_start: 2000-01-01
+    coverage_end: 2020-12-31
+    land_only: true
+    region_tags: [forest]

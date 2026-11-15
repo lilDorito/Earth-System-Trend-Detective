@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { WAKING_MESSAGE, useServerStatus } from "@/api/status";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ export default function Results() {
   const { response, loading, error } = useAppStore(
     useShallow((s) => ({ response: s.response, loading: s.loading, error: s.error })),
   );
+  const waking = useServerStatus((st) => st.waking);
   const top = useRef<HTMLDivElement>(null);
   const fetchedAt = response?.meta.fetched_at;
 
@@ -43,6 +45,7 @@ export default function Results() {
   if (loading) {
     return (
       <div className="space-y-3 px-5 py-5">
+        {waking && <p className="text-xs text-muted-foreground">{WAKING_MESSAGE}.</p>}
         <Skeleton className="h-3 w-16" />
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-10 w-full" />

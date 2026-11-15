@@ -405,3 +405,6 @@ export type Divergence = GridGeometry & {
   areas: TrendArea[];
   labels: number[]; // area id per cell, 0 outside
 };
+
+// NOAA GML annual mean atmospheric CO2
+export type Co2Series = { source: string; years: number[]; ppm: (number | null)[]; slope_decade: number };

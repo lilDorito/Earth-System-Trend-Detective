@@ -18,3 +18,7 @@ scenarios:
     name: Ocean warming and acidification
     story: Warmer surface water, more heat stored below and lower pH, together.
     variables: { sst: 1, ohc_0_700: 1, ph: -1 }
+  more_fire:
+    name: More fire, hotter and drier
+    story: More land burning while the air warms and the topsoil dries (burned area ends in 2020).
+    variables: { burned_area: 1, gldas_tair: 1, gldas_soilmoist_0_10: -1 }

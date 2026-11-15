@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import type { TrendVariable } from "@/api/types";
-import { usingMockData } from "@/api";
+import type { Co2Series, TrendVariable } from "@/api/types";
+import { api, usingMockData } from "@/api";
 import { NARROW } from "@/lib/useMedia";
+import { useServerStatus } from "@/api/status";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -33,6 +34,34 @@ const DISPLAYS: { value: Display; label: string }[] = [
 ];
 
 // colour bar for what is on the globe, with notes for the variables drawn in their own way
+// atmospheric CO2 beside the ocean carbon variables it drives
+const CO2_CONTEXT = new Set(["pco2", "ph"]);
+
+function Co2Context() {
+  const [co2, setCo2] = useState<Co2Series | null>(null);
+  useEffect(() => {
+    void api.trendCo2().then(setCo2, () => setCo2(null));
+  }, []);
+  if (!co2) return null;
+  const first = co2.ppm.find((v) => v != null);
+  const last = [...co2.ppm].reverse().find((v) => v != null);
+  return (
+    <PanelSection className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label>Atmospheric CO₂</Label>
+        <span className="font-mono text-[13px] tabular-nums">
+          {formatSigned(co2.slope_decade, 1)} <span className="text-muted-foreground">ppm/dec</span>
+        </span>
+      </div>
+      <TrendChart years={co2.years} values={co2.ppm} units="ppm" height={80} compact />
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        {first?.toFixed(0)} to {last?.toFixed(0)} ppm ({co2.source}, NOAA GML). The ocean takes up part of it, which raises
+        its pCO₂ and lowers its pH.
+      </p>
+    </PanelSection>
+  );
+}
+
 function Legend() {
   const s = useTrendMapStore(
     useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, wind: s.wind, hotspot: s.hotspot })),
@@ -205,6 +234,7 @@ export default function ControlPanel() {
     })),
   );
   const [open, setOpen] = useState(() => !isPhone());
+  const waking = useServerStatus((st) => st.waking);
   const change = s.display === "trend";
   const units = s.meta?.units ?? "";
 
@@ -217,7 +247,7 @@ export default function ControlPanel() {
     // on phones the open panel sits above the point and region sheets; collapsing it reveals them again
     <Panel
       className={cn(
-        "scrollbar-thin absolute inset-x-3 top-3 max-h-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain sm:inset-x-auto sm:left-4 sm:top-4 sm:w-[300px]",
+        "scrollbar-thin absolute inset-x-3 top-3 max-h-[calc(100%-1.5rem)] overflow-y-auto overflow-x-hidden overscroll-contain sm:inset-x-auto sm:left-4 sm:top-4 sm:w-[300px]",
         open && "max-lg:z-30",
       )}
     >
@@ -225,7 +255,7 @@ export default function ControlPanel() {
         <div className="min-w-0 flex-1 cursor-pointer sm:cursor-auto" onClick={() => isPhone() && setOpen(!open)}>
           <h2 className="text-sm font-semibold">{s.meta?.name ?? "Trend map"}</h2>
           <p className="text-xs text-muted-foreground">
-            {s.meta ? `Annual means, ${s.meta.years[0]} to ${s.meta.years[1]}` : "Loading"}
+            {s.meta ? `Annual means, ${s.meta.years[0]} to ${s.meta.years[1]}` : waking ? "Waking the server up" : "Loading"}
           </p>
         </div>
         <Button
@@ -316,6 +346,8 @@ export default function ControlPanel() {
           {s.showTrend && <Legend />}
 
           <Stations />
+          {!usingMockData && CO2_CONTEXT.has(s.variable) && <Co2Context />}
+
           <Fingerprints />
           <OppositeTrends />
 

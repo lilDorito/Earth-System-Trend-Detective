@@ -26,6 +26,7 @@ import ocean  # noqa: E402
 OUT = Path(os.environ.get("HF_DATASET_DIR", ROOT / "data" / "hf"))
 NASA_DIR = Path(os.environ.get("NASA_GRID_DIR", ROOT / "data" / "nasa_grid"))
 OCEAN_DIR = Path(os.environ.get("OCEAN_DIR", ROOT / "data" / "ocean")) / "processed"
+EXTRA_DIR = Path(os.environ.get("EXTRA_DIR", ROOT / "data" / "extra")) / "processed"
 NCEI_DIR = Path(os.environ.get("NCEI_DIR", ROOT / "data" / "ncei")) / "processed"
 REPO = os.environ.get("HF_DATASET", "lilDorito/earth-trend-data")
 
@@ -58,10 +59,21 @@ LICENSES = {
     "CMEMS": "Copernicus Marine Service licence: free use and redistribution with attribution",
     "EN4": "Met Office EN4, Non-Commercial Government Licence: non-commercial use with attribution",
     "OceanSODA": "CC BY 4.0 (Gregor and Gruber, OceanSODA-ETHZ)",
+    "GFED5": "CC BY 4.0 (Chen et al. 2023, GFED5 burned area)",
+}
+
+# grids from scripts/ingest/extra.py: (units, name, group, domain, product)
+EXTRA = {
+    "aod": ("1", "Aerosol optical depth at 550 nm (MERRA-2)", "atmosphere", "global", "M2TMNXAER v5.12.4"),
+    "to3": ("DU", "Total column ozone (MERRA-2)", "atmosphere", "global", "M2TMNXCHM v5.12.4"),
+    "ndvi": ("1", "Vegetation index NDVI (MODIS Terra)", "land", "land", "MOD13C2 v061"),
+    "burned_area": ("km2/month", "Burned area (GFED5)", "land", "land", "GFED5"),
 }
 
 
 def license_of(desc: str) -> str:
+    if "GFED5" in desc:
+        return LICENSES["GFED5"]
     if "EN4" in desc:
         return LICENSES["EN4"]
     if "OceanSODA" in desc:
@@ -81,11 +93,18 @@ def variables() -> dict[str, dict]:
                         product=f"{spec['short_name']} v{spec['version']}")
     for key, (units, desc) in ocean.VARS.items():
         out[key] = dict(kind="nc", units=units, name=desc, group="ocean", domain="ocean", product=desc.split("(")[-1].rstrip(")"))
+    for key, (units, desc, group, domain, product) in EXTRA.items():
+        out[key] = dict(kind="extra", units=units, name=desc, group=group, domain=domain, product=product)
     return out
 
 
 def source_path(key: str, kind: str) -> Path | None:
-    candidates = [NASA_DIR / "processed" / f"{key}.csv", NASA_DIR / f"{key}.csv"] if kind == "csv" else [OCEAN_DIR / f"{key}.nc"]
+    candidates = {
+        "csv": [NASA_DIR / "processed" / f"{key}.csv", NASA_DIR / f"{key}.csv"],
+        "nc": [OCEAN_DIR / f"{key}.nc"],
+        # extra.py writes to data/extra/processed; files dropped straight into data/ work too
+        "extra": [EXTRA_DIR / f"{key}.nc", ROOT / "data" / f"{key}.nc"],
+    }[kind]
     return next((p for p in candidates if p.exists()), None)
 
 
@@ -184,6 +203,11 @@ def build_grids(keys: list[str]) -> list[dict]:
             continue
         started = time.time()
         table = read_csv(path) if meta["kind"] == "csv" else read_nc(path, key)
+        if key in LAND_ONLY and (OUT / "regions" / "weights.parquet").exists():
+            table = land_cells(table)
+        if not table.num_rows:
+            print(f"  skip {key}: no values")
+            continue
         write_grid(table, OUT / "grid" / f"{key}.parquet")
         write_annual(table, OUT / "annual" / f"{key}.parquet")
         rows.append(summary(key, meta, table))
@@ -204,6 +228,33 @@ def build_stations() -> None:
         table = pa.Table.from_pandas(pd.read_csv(NCEI_DIR / f"{name}.csv"), preserve_index=False)
         pq.write_table(table, out / f"{name}.parquet", **encoding(table.schema))
     print(f"  stations: {wide.num_rows:,} station-months, {pq.read_metadata(out / 'stations.parquet').num_rows:,} stations")
+
+
+# global monthly series (NOAA GML CO2) next to the grids: series/<name>.parquet
+def build_series() -> None:
+    sources = [EXTRA_DIR / "co2_monthly.csv", ROOT / "data" / "co2_monthly.csv"]
+    path = next((p for p in sources if p.exists()), None)
+    if path is None:
+        return
+    frame = pd.read_csv(path, parse_dates=["time"])
+    (OUT / "series").mkdir(exist_ok=True)
+    frame.astype({c: "float32" for c in frame.columns if c != "time"}).to_parquet(OUT / "series" / "co2.parquet", index=False, compression="zstd")
+    print(f"  series: co2, {len(frame)} months ({frame['time'].min():%Y-%m} to {frame['time'].max():%Y-%m})")
+
+
+# GFED stores zeros over the ocean; "never burns" there would dilute every regional mean
+LAND_ONLY = {"burned_area"}
+
+
+def land_cells(table: pa.Table) -> pa.Table:
+    # cells that overlap any country (Natural Earth, regions/weights.parquet)
+    weights = pq.read_table(OUT / "regions" / "weights.parquet").to_pandas()
+    index = pq.read_table(OUT / "regions" / "index.parquet", columns=["id", "kind"]).to_pandas()
+    countries = set(index.loc[index["kind"] == "country", "id"])
+    land = weights[weights["id"].isin(countries)][["lat", "lon"]].drop_duplicates()
+    keys = pa.array((np.rint((land["lat"] + 89.5)) * 360 + np.rint(land["lon"] + 179.5)).astype(np.int32))
+    cell = pc.cast(pc.add(pc.multiply(pc.round(pc.add(table["lat"], 89.5)), 360), pc.round(pc.add(table["lon"], 179.5))), pa.int32())
+    return table.filter(pc.is_in(cell, value_set=keys))
 
 
 def write_catalog(rows: list[dict]) -> pd.DataFrame:
@@ -256,6 +307,7 @@ from public NASA, NOAA, Copernicus, Met Office and ETH Zurich products; see each
 | `stations/trends_station.parquet` | per-station Mann-Kendall / Sen trends per element |
 | `regions/index.parquet` | Natural Earth countries and admin-1 regions: id, name, country, bounds, label point, area |
 | `regions/weights.parquet` | `id, lat, lon, frac`: share of each cell's area inside the region |
+| `series/co2.parquet` | NOAA GML monthly CO2, global mean and Mauna Loa (ppm) |
 | `insights/cells.npz`, `insights/regions.npz` | every variable's per-cell trend, p, scatter and jump flag in one file, the annual mean series of every region, and an annual Nino 3.4 index |
 | `trends/<variable>.npz` | whole-record trend map products: Sen slope per year and FDR significance per cell, 2-degree year maps (anomalies and values), global means, colour scales |
 
@@ -297,7 +349,7 @@ This dataset combines products under different terms. Credit the original source
 
 {lines}
 
-Station data: NOAA NCEI Global Summary of the Month, public domain.
+Station data: NOAA NCEI Global Summary of the Month, public domain. CO2 series: NOAA GML, public domain.
 
 Region boundaries: Natural Earth 1:10m (v5.1.2), public domain; countries from Ukraine's point-of-view edition.
 """
@@ -365,6 +417,7 @@ def build(args) -> None:
         print("stations:")
         build_stations()
     catalog = write_catalog(rows)
+    build_series()
     print("trend maps:")
     build_trends(args.keys)
     write_card(catalog)
@@ -378,7 +431,9 @@ def verify(args) -> None:
     catalog = pd.read_parquet(OUT / "catalog.parquet")
     meta = variables()
     for key in catalog["key"]:
-        source = read_csv(source_path(key, "csv")) if meta[key]["kind"] == "csv" else read_nc(source_path(key, "nc"), key)
+        source = read_csv(source_path(key, "csv")) if meta[key]["kind"] == "csv" else read_nc(source_path(key, meta[key]["kind"]), key)
+        if key in LAND_ONLY:
+            source = land_cells(source)
         built = pq.read_table(OUT / "grid" / f"{key}.parquet")
         problems = []
         if built.num_rows != source.num_rows:

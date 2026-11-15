@@ -25,7 +25,20 @@ import type {
   InsightPlace,
   Scan,
   Scenario,
+  Co2Series,
 } from "./types";
+
+import { useServerStatus } from "./status";
+
+// a JSON error with a detail field comes from the API itself
+async function hasDetail(res: Response): Promise<boolean> {
+  try {
+    const body = await res.clone().json();
+    return typeof body?.detail === "string";
+  } catch {
+    return false;
+  }
+}
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
@@ -42,16 +55,34 @@ const query = (params: Record<string, string>) => new URLSearchParams(params).to
 const placeQuery = (place: InsightPlace) =>
   query(Object.fromEntries(Object.entries(place).map(([k, v]) => [k, typeof v === "number" ? v.toFixed(3) : String(v)])));
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
+// a sleeping server answers nothing (the browser says only "Failed to fetch") or a 502-504 from the proxy;
+// reads are retried with growing pauses for about 90 s while the server starts
+const WAKE_PAUSES_S = [2, 3, 5, 8, 10, 12, 15, 15, 20];
+const asleep = (status: number) => status === 0 || status === 502 || status === 503 || status === 504;
+const pause = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
+
+async function attempt(path: string, init?: RequestInit): Promise<Response | null> {
   try {
-    res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: { "Content-Type": "application/json", ...init?.headers },
-    });
+    return await fetch(`${BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   } catch {
-    // no response at all: the server is asleep, restarting or unreachable (the browser says only "Failed to fetch")
-    throw new ApiError(0, "No answer from the server. It may be waking up or restarting; try again in a minute.");
+    return null;
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const retry = !init?.method || init.method === "GET";
+  let res = await attempt(path, init);
+  for (const s of retry ? WAKE_PAUSES_S : []) {
+    // a 503 with a reason (a dataset revision without some products) is an answer, not a sleeping server
+    if (res && !(asleep(res.status) && !(await hasDetail(res)))) break;
+    useServerStatus.setState({ waking: true });
+    await pause(s);
+    res = await attempt(path, init);
+  }
+  if (res && !asleep(res.status)) useServerStatus.setState({ waking: false });
+  if (!res) {
+    useServerStatus.setState({ waking: false });
+    throw new ApiError(0, "No answer from the server. It may still be starting; try again in a minute.");
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -76,6 +107,7 @@ export const httpApi = {
   insightScan: (place: InsightPlace) => request<Scan>(`/api/insights/scan?${placeQuery(place)}`),
   insightDiagnose: (variable: string, place: InsightPlace) =>
     request<Diagnosis>(`/api/insights/diagnose?${query({ variable })}&${placeQuery(place)}`),
+  trendCo2: () => request<Co2Series>("/api/trendmap/co2"),
   insightScenarios: () => request<Scenario[]>("/api/insights/scenarios"),
   insightHotspots: (scenario: string) => request<Hotspots>(`/api/insights/hotspots?${query({ scenario })}`),
   insightDivergence: (variable: string) => request<Divergence>(`/api/insights/divergence?${query({ variable })}`),

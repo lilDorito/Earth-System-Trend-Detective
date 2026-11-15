@@ -35,8 +35,10 @@ DISPLAY_UNITS = {
     "m s-1": (1, "m/s"),
     "fraction 0-1": (100, "%"),
     "cm LWE": (1, "cm"),
+    "km2/month": (1, "km²/month"),
 }
-KEY_UNITS = {"sla": (1000, "mm")}
+# dimensionless indices are labelled with their own name
+KEY_UNITS = {"sla": (1000, "mm"), "aod": (1, "AOD"), "ndvi": (1, "NDVI")}
 
 # variables built from others: speed of the annual mean wind vector (smaller than the mean speed where winds turn)
 VIRTUAL = {
@@ -294,3 +296,13 @@ def nice_limit(value: float) -> float:
         if value <= step * power:
             return float(step * power)
     return float(10 * power)
+
+
+@lru_cache(maxsize=1)
+def co2() -> pd.DataFrame:
+    # NOAA GML monthly CO2 (ppm), global mean and Mauna Loa (series/co2.parquet)
+    try:
+        with open_file("series/co2.parquet") as file:
+            return pd.read_parquet(file)
+    except Exception as e:
+        raise DatasetError(f"This dataset revision has no CO2 series: {e}") from e

@@ -43,10 +43,12 @@ export function useTrendLayer() {
   // transformed once per data set, so each year keeps one array identity and its prepared field is reused
   const valueMaps = useMemo(() => {
     if (!s.valueFrames) return null;
-    const log = (frame: (number | null)[]) => frame.map((v) => (v != null && v > 0 ? Math.log10(v) : null));
+    // zero (no fire) and anything below the floor take the floor's colour instead of looking like missing data
+    const floor = style.logFloor ?? 1e-3;
+    const log = (frame: (number | null)[]) => frame.map((v) => (v == null ? null : Math.log10(Math.max(v, floor))));
     const mean = periodMean(s.valueFrames);
     return style.log ? { years: s.valueFrames.frames.map(log), mean: log(mean) } : { years: s.valueFrames.frames, mean };
-  }, [s.valueFrames, style.log]);
+  }, [s.valueFrames, style.log, style.logFloor]);
 
   // built even while hidden, so switching the layer on can fade in at once
   const layer = useMemo(() => {

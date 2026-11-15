@@ -33,4 +33,8 @@ export const DESCRIPTIONS: Record<string, string> = {
   ph: "How acidic the sea surface is; lower pH means more acidic, as the ocean absorbs CO₂.",
   pco2: "How much CO₂ the sea surface holds, compared with the air above it.",
   chlor_a: "Green pigment of microscopic algae (phytoplankton) seen from space: a sign of ocean life.",
+  aod: "How hazy the air is: dust, smoke, sea salt and pollution particles dimming the sunlight (0 is perfectly clear).",
+  to3: "All the ozone above a place, in Dobson units; the stratospheric layer that blocks the Sun's UV.",
+  ndvi: "How green the land is, from satellite images: near 0 for bare ground, up to about 0.9 for dense forest.",
+  burned_area: "Area burned by fires in each 1-degree cell, per month, from satellite fire maps (GFED5, until 2020).",
 };

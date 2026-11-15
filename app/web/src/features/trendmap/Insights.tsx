@@ -162,8 +162,10 @@ function Significance({ d }: { d: Diagnosis }) {
   const [open, setOpen] = useState(false);
   const headline = d.significant
     ? `Significant since the record reached ${d.growth.find((_, i) => d.growth.slice(i).every((h) => h.p < 0.05))?.end ?? d.years[d.years.length - 1]}`
-    : d.years_needed
-      ? `Needs about ${d.years_needed - d.years.length} more ${d.years_needed - d.years.length === 1 ? "year" : "years"} at this rate`
+    : d.years_needed && d.years_needed <= d.years.length
+      ? "On the edge: a few more years would likely settle it"
+      : d.years_needed
+        ? `Needs about ${d.years_needed - d.years.length} more ${d.years_needed - d.years.length === 1 ? "year" : "years"} at this rate`
       : "No steady trend to wait for";
   return (
     <div>

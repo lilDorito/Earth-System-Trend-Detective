@@ -25,6 +25,7 @@ import { styleFor } from "@/features/trendmap/styles";
 import { useStationStore } from "@/store/useStationStore";
 import TimelineBar from "@/features/trendmap/TimelineBar";
 import { useTrendLayer } from "@/features/trendmap/useTrendLayer";
+import { WAKING_MESSAGE, useServerStatus } from "@/api/status";
 import { Panel } from "@/components/ui/panel";
 import { NARROW, useMedia } from "@/lib/useMedia";
 import { cn } from "@/lib/utils";
@@ -96,6 +97,7 @@ export default function TrendMapPage() {
   }, [s.hotspot]);
   const extras = s.showTrend && !s.hotspot;
   const narrow = useMedia(NARROW);
+  const waking = useServerStatus((st) => st.waking);
   const notes: readonly (readonly ["busy" | "warn", string])[] = [
     ...(s.pointLoading && !s.selected ? [["busy", "loading cell"] as const] : []),
     ...(s.stationLoading && !s.station ? [["busy", "loading station"] as const] : []),
@@ -152,7 +154,7 @@ export default function TrendMapPage() {
         rightInset={stacked ? 396 : 0}
         leftInset={332}
         viewShift={viewShift}
-        loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
+        loading={waking ? WAKING_MESSAGE : s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
         {style.wind && s.wind && (

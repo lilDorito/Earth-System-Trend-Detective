@@ -118,9 +118,10 @@ export function Dropdown({
           role="listbox"
           aria-label={ariaLabel}
           className={cn(
-            "scrollbar-thin absolute top-full z-30 mt-1 max-h-72 min-w-full max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-md border bg-popover py-1 text-popover-foreground shadow-lg shadow-black/40",
+            "scrollbar-thin absolute top-full z-30 mt-1 max-h-72 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-md border bg-popover py-1 text-popover-foreground shadow-lg shadow-black/40",
             align === "right" ? "right-0" : "left-0",
-            variant === "inline" && "w-max min-w-40",
+            // a field's list is exactly as wide as the field, so it can never widen a panel it sits in
+            variant === "inline" ? "w-max min-w-40" : "w-full",
           )}
         >
           {items.map((item, i) => (
@@ -145,7 +146,7 @@ export function Dropdown({
                   variant === "inline" && "font-mono text-[12px]",
                 )}
               >
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <span className={cn("min-w-0 flex-1", variant === "inline" ? "truncate" : "break-words")}>{item.label}</span>
                 {item.value === value && <Check className="size-3.5 shrink-0 text-primary" />}
               </div>
             </li>

@@ -189,7 +189,7 @@ function SecretComet({ onOpen }: { onOpen: () => void }) {
   const [texture, setTexture] = useState<Texture | null>(null);
   useEffect(() => {
     let active = true;
-    new TextureLoader().load("/textures/goyz-rock.jpg", (loaded) => {
+    new TextureLoader().load("/textures/goyz-rock.jpg?v=ai", (loaded) => {
       if (!active) return loaded.dispose();
       loaded.colorSpace = SRGBColorSpace;
       setTexture(loaded);
@@ -856,8 +856,8 @@ export default function GlobeCanvas({
               </span>
             </span>
             <motion.img
-              src="/textures/goyz.jpg"
-              alt="The team, as astronauts on the Moon"
+              src="/textures/goyz.jpg?v=ai"
+              alt="The team, as astronauts on the Moon (AI-generated image)"
               initial={{ scale: 0.6 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.6 }}

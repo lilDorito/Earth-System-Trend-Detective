@@ -23,6 +23,7 @@ import type {
 import { styleFor } from "@/features/trendmap/styles";
 import { elementFor } from "@/features/stations/elements";
 import { useStationStore } from "@/store/useStationStore";
+import { useCo2Store } from "@/store/useCo2Store";
 import { boundaryLabel, fitDistance } from "@/features/globe/boundaries";
 import type { Area } from "@/features/globe/useOutline";
 
@@ -284,6 +285,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   async selectPoint(lat, lon, name) {
     const id = ++pointRequestId;
     get().clearStation();
+    useCo2Store.getState().setOpen(false);
     set({ picked: { lat, lon, name }, pointLoading: true, pointError: null });
     try {
       const point = await api.trendPoint(get().variable, lat, lon);
@@ -311,6 +313,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
     if (!element) return;
     const id = ++stationRequestId;
     pointRequestId++;
+    useCo2Store.getState().setOpen(false);
     set({ stationId, stationLoading: true, stationError: null, picked: null, selected: null, pointLoading: false, pointError: null });
     try {
       const station = await api.stationCompare(stationId, get().variable, element);

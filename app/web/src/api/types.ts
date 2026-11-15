@@ -407,4 +407,14 @@ export type Divergence = GridGeometry & {
 };
 
 // NOAA GML annual mean atmospheric CO2
-export type Co2Series = { source: string; years: number[]; ppm: (number | null)[]; slope_decade: number };
+export type Co2Series = {
+  source: string;
+  years: number[];
+  ppm: (number | null)[];
+  fitted: (number | null)[];
+  growth: (number | null)[]; // ppm added each year, null for the first
+  slope_decade: number;
+  months: string[]; // "YYYY-MM"
+  monthly: (number | null)[];
+  mauna_loa: (number | null)[];
+};

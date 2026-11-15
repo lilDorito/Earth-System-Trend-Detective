@@ -3,6 +3,7 @@
 import type { Api } from "../client";
 import { analyze } from "./analysis";
 import { demos, regions, regionTypes, variables } from "./catalog";
+import { trendCo2 } from "./co2";
 import { stationCompare, stations } from "./stations";
 import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion, trendVariables, trendWind } from "./trendmap";
 
@@ -36,7 +37,7 @@ export const mockApi: Api = {
   insightScan: () => unavailable(),
   insightDiagnose: () => unavailable(),
   insightScenarios: () => respond(() => []),
-  trendCo2: () => unavailable(),
+  trendCo2: () => respond(trendCo2),
   insightHotspots: () => unavailable(),
   insightDivergence: () => unavailable(),
   trendRegion: (_, region) => respond(() => trendRegion(region)),

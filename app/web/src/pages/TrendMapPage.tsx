@@ -21,6 +21,8 @@ import StationLayer from "@/features/globe/StationLayer";
 import { elementFor } from "@/features/stations/elements";
 import { stationLabel, trendStyle } from "@/features/stations/style";
 import StationPanel from "@/features/trendmap/StationPanel";
+import Co2Panel from "@/features/trendmap/Co2Panel";
+import { useCo2Store } from "@/store/useCo2Store";
 import { styleFor } from "@/features/trendmap/styles";
 import { useStationStore } from "@/store/useStationStore";
 import TimelineBar from "@/features/trendmap/TimelineBar";
@@ -106,7 +108,8 @@ export default function TrendMapPage() {
     ...(s.pointError && !s.pointLoading ? [["warn", s.pointError] as const] : []),
     ...(s.stationError && !s.stationLoading ? [["warn", s.stationError] as const] : []),
   ];
-  const stacked = !!(s.region || s.selected || s.station) || notes.length > 0;
+  const co2Open = useCo2Store((st) => st.open);
+  const stacked = !!(s.region || s.selected || s.station) || co2Open || notes.length > 0;
   // the globe centres in what the panels leave: between the side panels on wide screens, above the sheet below that
   const sheet = useRef<HTMLDivElement>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
@@ -196,6 +199,7 @@ export default function TrendMapPage() {
             <AnimatePresence initial={false}>
               {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
               {s.station && <StationPanel key="station" station={s.station} loading={s.stationLoading} />}
+              {co2Open && <Co2Panel key="co2" />}
               {s.region && <RegionPanel key="region" region={s.region} />}
             </AnimatePresence>
             {notes.map(([tone, text]) => (

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import type { Co2Series, TrendVariable } from "@/api/types";
-import { api, usingMockData } from "@/api";
+import type { TrendVariable } from "@/api/types";
+import { useCo2Store } from "@/store/useCo2Store";
 import { NARROW } from "@/lib/useMedia";
 import { useServerStatus } from "@/api/status";
 import { Alert } from "@/components/ui/alert";
@@ -34,29 +34,41 @@ const DISPLAYS: { value: Display; label: string }[] = [
 ];
 
 // colour bar for what is on the globe, with notes for the variables drawn in their own way
-// atmospheric CO2 beside the ocean carbon variables it drives
-const CO2_CONTEXT = new Set(["pco2", "ph"]);
+// atmospheric CO2 beside the variables it drives, with a line on how
+const CO2_HEAT = "CO₂ traps heat; its rise is the main driver of the warming trend on the map.";
+const CO2_CONTEXT: Record<string, string> = {
+  merra2_t2m: CO2_HEAT,
+  merra2_ts: CO2_HEAT,
+  gldas_tair: CO2_HEAT,
+  gldas_skin_temp: CO2_HEAT,
+  sst: CO2_HEAT,
+  ohc_0_700: "Most of the extra heat that CO₂ traps ends up in the ocean, which is why its heat content keeps climbing.",
+  ohc_0_2000: "Most of the extra heat that CO₂ traps ends up in the ocean, which is why its heat content keeps climbing.",
+  pco2: "The ocean takes up part of it, which raises its pCO₂.",
+  ph: "The ocean takes up part of it, which lowers its pH (ocean acidification).",
+  ndvi: "More CO₂ also feeds plant growth, one of the reasons for greening, next to warming and land use.",
+};
+const CO2_ITEM = "__co2";
 
-function Co2Context() {
-  const [co2, setCo2] = useState<Co2Series | null>(null);
-  useEffect(() => {
-    void api.trendCo2().then(setCo2, () => setCo2(null));
-  }, []);
+function Co2Context({ note }: { note: string }) {
+  const { co2, load, setOpen } = useCo2Store(useShallow((s) => ({ co2: s.series, load: s.load, setOpen: s.setOpen })));
+  useEffect(load, [load]);
   if (!co2) return null;
   const first = co2.ppm.find((v) => v != null);
   const last = [...co2.ppm].reverse().find((v) => v != null);
   return (
     <PanelSection className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
-        <Label>Atmospheric CO₂</Label>
+        <button type="button" onClick={() => setOpen(true)} className="cursor-pointer underline-offset-2 hover:underline">
+          <Label>Atmospheric CO₂</Label>
+        </button>
         <span className="font-mono text-[13px] tabular-nums">
           {formatSigned(co2.slope_decade, 1)} <span className="text-muted-foreground">ppm/dec</span>
         </span>
       </div>
       <TrendChart years={co2.years} values={co2.ppm} units="ppm" height={80} compact />
       <p className="text-[11px] leading-snug text-muted-foreground">
-        {first?.toFixed(0)} to {last?.toFixed(0)} ppm ({co2.source}, NOAA GML). The ocean takes up part of it, which raises
-        its pCO₂ and lowers its pH.
+        {first?.toFixed(0)} to {last?.toFixed(0)} ppm, NOAA GML. {note}
       </p>
     </PanelSection>
   );
@@ -231,17 +243,23 @@ export default function ControlPanel() {
       hasSelection: s.selected !== null || s.station !== null || s.region !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
+      clearSelection: s.clearSelection,
     })),
   );
   const [open, setOpen] = useState(() => !isPhone());
+  const co2Open = useCo2Store((st) => st.open);
+  const openCo2 = () => {
+    s.clearSelection();
+    useCo2Store.getState().setOpen(true);
+  };
   const waking = useServerStatus((st) => st.waking);
   const change = s.display === "trend";
   const units = s.meta?.units ?? "";
 
   useEffect(() => {
     // below desktop width the panel and the selection sheet compete for the screen: the selection wins
-    if (s.hasSelection && window.matchMedia(NARROW).matches) setOpen(false);
-  }, [s.selection, s.hasSelection]);
+    if ((s.hasSelection || co2Open) && window.matchMedia(NARROW).matches) setOpen(false);
+  }, [s.selection, s.hasSelection, co2Open]);
 
   return (
     // on phones the open panel sits above the point and region sheets; collapsing it reveals them again
@@ -292,14 +310,15 @@ export default function ControlPanel() {
           )}
 
 
-          {s.variables.length > 1 && (
+          {s.variables.length > 0 && (
             <PanelSection>
               <Dropdown
                 value={s.variable}
-                onChange={(key) => void s.setVariable(key)}
-                items={GROUPS.flatMap(([group, label]) =>
-                  s.variables.filter((v) => v.group === group).map((v) => ({ value: v.key, label: v.name, group: label })),
-                )}
+                onChange={(key) => (key === CO2_ITEM ? openCo2() : void s.setVariable(key))}
+                items={GROUPS.flatMap(([group, label]) => [
+                  ...s.variables.filter((v) => v.group === group).map((v) => ({ value: v.key, label: v.name, group: label })),
+                  ...(group === "atmosphere" ? [{ value: CO2_ITEM, label: "Atmospheric CO₂ (chart)", group: label }] : []),
+                ])}
                 aria-label="Variable"
               />
               {DESCRIPTIONS[s.variable] && <p className="mt-2 text-xs leading-snug text-muted-foreground">{DESCRIPTIONS[s.variable]}</p>}
@@ -345,7 +364,7 @@ export default function ControlPanel() {
           {s.showTrend && <Legend />}
 
           <Stations />
-          {!usingMockData && CO2_CONTEXT.has(s.variable) && <Co2Context />}
+          {CO2_CONTEXT[s.variable] && <Co2Context note={CO2_CONTEXT[s.variable]} />}
 
           <Fingerprints />
           <OppositeTrends />

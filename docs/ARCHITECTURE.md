@@ -46,3 +46,11 @@
 - Trend map: off by default and fetched only when switched on (`showStations` in `useTrendMapStore`, lists shared in `useStationStore`). Points use the variable's change palette on the map's own trend scale, so a station and the field around it read the same; a white ring marks FDR-significant trends, grey points have under 20 years, and "Significant only" hides the rest. A click opens `StationPanel` (station against grid). Variables with no paired element disable the switch.
 - Explorer: a switch and an element picker on the globe (`StationToggle`); points are neutral, and a click picks the station as the place to analyse.
 - Mock mode: `src/api/mock/stations.ts` makes synthetic stations in the browser; the API answers 503 with `DATA_MODE=mock`.
+
+### Atmospheric CO₂ (`/api/trendmap/co2`, `useCo2Store`, `Co2Panel`)
+
+- Input (live): `series/co2.parquet` (NOAA GML monthly global marine surface mean and Mauna Loa). One response holds the annual means with their Sen slope and fitted line, the ppm added each year, and both monthly records; it is built once and served gzipped from memory like the other whole-record responses (about 8 KB).
+- CO₂ is well mixed, so it is a chart, not a globe layer. The browser fetches it once per session (`useCo2Store`) and only when something shows it.
+- Context: a small chart under the variables it drives (2 m air, skin and sea surface temperature, ocean heat content, pCO₂, pH, NDVI), each with a one-line note on the link.
+- Panel: "Atmospheric CO₂ (chart)" in the variable list opens `Co2Panel` in the selection stack without changing the map: monthly global and Mauna Loa curves, rise since 2000, ppm added per year then and now, and buttons to the linked variables. Picking a cell or a station closes it.
+- Mock mode uses a synthetic Keeling curve (`src/api/mock/co2.ts`).

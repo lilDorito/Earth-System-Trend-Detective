@@ -328,23 +328,35 @@ def wind(start: int | None = None, end: int | None = None):
 
 
 @router.get("/co2")
-def co2():
-    # annual mean atmospheric CO2 and its Sen slope, context for the ocean carbon variables (pCO2, pH)
+def co2(request: Request):
+    # atmospheric CO2: annual means with their Sen slope, and the monthly global and Mauna Loa records
     if settings.data_mode != "live":
         raise HTTPException(404, "The CO2 series needs DATA_MODE=live")
     try:
         frame = dataset.co2()
     except dataset.DatasetError as e:
         raise HTTPException(503, str(e))
+    return _send(request, f"co2|{dataset.REVISION}", lambda: _co2(frame))
+
+
+def _co2(frame: pd.DataFrame) -> dict:
+    frame = frame.sort_values("time")
     annual = frame.assign(year=frame["time"].dt.year).groupby("year").agg(ppm=("co2_global_ppm", "mean"), months=("co2_global_ppm", "count"))
     annual = annual[annual["months"] == 12]
     years = annual.index.to_numpy(dtype=np.float64)
-    slope, _ = _sen(years, annual["ppm"].to_numpy(dtype=np.float64))
+    ppm = annual["ppm"].to_numpy(dtype=np.float64)
+    slope, intercept = _sen(years, ppm)
+    mlo = frame["co2_mauna_loa_ppm"] if "co2_mauna_loa_ppm" in frame else pd.Series(np.nan, index=frame.index)
     return {
         "source": "NOAA GML global marine surface mean",
         "years": [int(y) for y in years],
-        "ppm": _clean(annual["ppm"], 2),
+        "ppm": _clean(ppm, 2),
+        "fitted": _clean(intercept + slope * (years - years[0]), 2) if len(years) else [],
+        "growth": [None, *_clean(np.diff(ppm), 2)] if len(years) else [],
         "slope_decade": slope * 10,
+        "months": frame["time"].dt.strftime("%Y-%m").tolist(),
+        "monthly": _clean(frame["co2_global_ppm"], 2),
+        "mauna_loa": _clean(mlo, 2),
     }
 
 

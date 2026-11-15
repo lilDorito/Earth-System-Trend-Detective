@@ -40,7 +40,7 @@ The whole-record map reads precomputed files, so opening a variable takes about 
 
 ## Frontend (`app/web/`, React + TypeScript + Vite)
 
-- **Globe:** react-three-fiber. The trend field is a shader on a sphere: palette, significance stipple and land mask on the GPU. Wind particles, contours and outlines are separate layers.
+- **Globe:** react-three-fiber. The trend field is a shader on a sphere: palette, significance stipple and land mask on the GPU. Wind and ocean current streaks, contours and outlines are separate layers.
 - **State:** Zustand stores per page. **Charts:** ECharts. **UI:** Tailwind and shadcn/ui.
 - **Regions:** search and outlines read static files in `public/regions/`, so they cost no API call.
 - **Layout:** panels stack on the right on wide screens and form a bottom sheet on phones, and the globe shifts to stay centred in the free space.

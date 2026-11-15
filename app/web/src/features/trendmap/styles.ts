@@ -20,6 +20,7 @@ const CHANGE = {
   salinity: [[150, 215, 220], [60, 150, 190], [40, 85, 165], [34, 60, 126], [38, 38, 44], [119, 90, 32], [160, 120, 40], [220, 175, 70], [250, 225, 150]],
   radiation: [[190, 190, 215], [125, 125, 155], [80, 80, 105], [61, 61, 80], [38, 38, 44], [131, 95, 22], [175, 125, 25], [235, 180, 40], [255, 235, 140]],
   wind: [[225, 190, 250], [170, 110, 210], [115, 55, 150], [85, 41, 112], [38, 38, 44], [51, 97, 37], [70, 130, 45], [130, 190, 70], [210, 240, 140]],
+  current: [[255, 205, 175], [235, 135, 100], [175, 78, 60], [125, 52, 42], [38, 38, 44], [20, 90, 110], [25, 125, 150], [60, 185, 205], [170, 235, 245]],
   pressure: [[200, 185, 245], [140, 120, 210], [85, 65, 150], [63, 48, 112], [38, 38, 44], [133, 75, 27], [180, 100, 30], [240, 155, 50], [255, 215, 140]],
   aerosol: [[175, 225, 255], [90, 170, 230], [45, 110, 180], [40, 75, 125], [38, 38, 44], [120, 85, 40], [175, 120, 45], [225, 170, 70], [250, 225, 150]],
   ozone: [[230, 175, 255], [180, 105, 225], [125, 55, 170], [90, 45, 125], [38, 38, 44], [30, 95, 100], [35, 145, 145], [80, 200, 190], [175, 245, 230]],
@@ -55,7 +56,7 @@ export type VariableStyle = {
   log?: boolean; // values on a log scale
   logFloor?: number; // smallest value shown on a log scale; zero and below take its colour (default 0.001)
   isobars?: boolean; // contour lines with H and L instead of filled bands
-  wind?: boolean; // particles drift along the mean 10 m wind
+  flow?: "wind" | "current"; // particles drift along the mean 10 m wind or surface current
   edge?: number; // values view: a line at this value, first year against the year shown (sea ice edge)
   up: string; // what a rising cell does, for "x% of the region ..."
   stripes?: string; // name of the per-year stripes
@@ -99,9 +100,12 @@ const STYLES: Record<string, VariableStyle> = {
   sss: salinity,
   sal_0_700: salinity,
   gldas_swdown: { change: CHANGE.radiation, values: VALUES.solar, up: "gets sunnier" },
-  merra2_u10m: { change: CHANGE.wind, values: CHANGE.wind, signed: true, wind: true, up: "turns more eastward" },
-  merra2_v10m: { change: CHANGE.wind, values: CHANGE.wind, signed: true, wind: true, up: "turns more northward" },
-  merra2_wind10m: { ...windSpeed, wind: true },
+  merra2_u10m: { change: CHANGE.wind, values: CHANGE.wind, signed: true, flow: "wind", up: "turns more eastward" },
+  merra2_v10m: { change: CHANGE.wind, values: CHANGE.wind, signed: true, flow: "wind", up: "turns more northward" },
+  merra2_wind10m: { ...windSpeed, flow: "wind" },
+  current_speed: { change: CHANGE.current, values: VALUES.speed, flow: "current", up: "flows faster" },
+  u_current: { change: CHANGE.current, values: CHANGE.current, signed: true, flow: "current", up: "turns more eastward" },
+  v_current: { change: CHANGE.current, values: CHANGE.current, signed: true, flow: "current", up: "turns more northward" },
   gldas_wind: windSpeed,
   merra2_ps: { change: CHANGE.pressure, values: VALUES.pressure, isobars: true, up: "rises" },
   aod: { change: CHANGE.aerosol, values: VALUES.haze, log: true, logFloor: 0.01, up: "gets hazier" },

@@ -189,7 +189,7 @@ def test_live_trendmap_endpoints(local):
     lo, hi = meta["value_range"]
     assert 9 < lo < hi < 12
     assert client.get("/api/trendmap/frames", params={"variable": "fake_t2m", "kind": "nope"}).status_code == 422
-    assert client.get("/api/trendmap/wind").status_code in (200, 503, 404)
+    assert client.get("/api/trendmap/flow").status_code in (200, 503, 404)
     assert client.get("/api/trendmap/meta", params={"variable": "nope"}).status_code == 404
     region = client.get("/api/trendmap/region", params={"variable": "fake_t2m", "name": "tst"}).json()
     assert region["label"] == "Testland" and region["n_cells"] == 2 and region["slope_decade"] == pytest.approx(0.5, abs=0.01)

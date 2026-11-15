@@ -44,6 +44,7 @@ VARS = {
     "chlor_a": ("mg/m3", "Chlorophyll-a, geometric mean (NASA MODIS-Aqua)"),
     "u_current": ("m/s", "Surface current, eastward (OSCAR)"),
     "v_current": ("m/s", "Surface current, northward (OSCAR)"),
+    "current_speed": ("m/s", "Surface current speed (OSCAR)"),
     "ocean_mass": ("cm LWE", "Ocean mass, liquid water equivalent (GRACE/GRACE-FO JPL)"),
 }
 SOURCE_VARS = {

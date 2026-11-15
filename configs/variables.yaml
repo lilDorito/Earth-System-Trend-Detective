@@ -457,6 +457,20 @@ variables:
     land_only: false
     region_tags: [coast]
 
+  - key: ocean_current
+    variable_id: current_speed # Surface current speed (OSCAR)
+    source: hf_grid
+    name: Ocean current speed
+    short_definition: "How fast the water at the sea surface moves, from satellite measurements of sea level, wind and temperature."
+    units_raw: m/s
+    units: cm/s
+    resolution: monthly
+    group: ocean
+    typical_range: [1, 52]
+    coverage_start: 2000-01-01
+    land_only: false
+    region_tags: [coast]
+
   - key: aerosols
     variable_id: aod
     source: hf_grid

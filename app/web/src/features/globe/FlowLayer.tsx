@@ -1,18 +1,24 @@
-// particles drifting along a wind field, each trailing a short fading streak
+// particles drifting along a wind or ocean current field, each trailing a short fading streak
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { BufferAttribute, BufferGeometry, LineBasicMaterial, LineSegments } from "three";
-import type { GridGeometry } from "@/api/types";
+import type { FlowField, GridGeometry } from "@/api/types";
 
 const COUNT = 6000;
 const TRAIL = 10; // points per streak
 const STEP_S = 1 / 15; // a new trail point this often
-const SPEED = 0.6; // degrees per second for 1 m/s
+// drift in degrees per second for one unit of speed (wind in m/s, currents in cm/s), the speed drawn at full
+// brightness, and the streak colour; currents are some twenty times slower, so they are sped up to read alike
+const LOOK: Record<FlowField, { drift: number; full: number; color: [number, number, number] }> = {
+  wind: { drift: 0.6, full: 6, color: [0.92, 0.95, 1] },
+  current: { drift: 0.09, full: 35, color: [0.75, 0.97, 0.95] },
+};
 const RADIUS = 1.0014;
 const DEG = Math.PI / 180;
 
-type WindLayerProps = {
+type FlowLayerProps = {
+  field: FlowField;
   u: ArrayLike<number | null>;
   v: ArrayLike<number | null>;
   nlat: number;
@@ -41,7 +47,8 @@ function sampler(u: ArrayLike<number | null>, v: ArrayLike<number | null>, nlat:
   };
 }
 
-export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, transition = 1 }: WindLayerProps) {
+export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = true, transition = 1 }: FlowLayerProps) {
+  const look = LOOK[field];
   const invalidate = useThree((s) => s.invalidate);
   const sample = useMemo(() => sampler(u, v, nlat, nlon, grid), [u, v, nlat, nlon, grid]);
   const presence = useRef(0);
@@ -61,7 +68,7 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
     const vertices = COUNT * (TRAIL - 1) * 2;
     const positions = new Float32Array(vertices * 3);
     const colors = new Float32Array(vertices * 4);
-    for (let k = 0; k < vertices; k++) colors.set([0.92, 0.95, 1, 0], k * 4);
+    for (let k = 0; k < vertices; k++) colors.set([...look.color, 0], k * 4);
     const geometry = new BufferGeometry();
     geometry.setAttribute("position", new BufferAttribute(positions, 3));
     geometry.setAttribute("color", new BufferAttribute(colors, 4));
@@ -70,7 +77,7 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
     object.frustumCulled = false;
     object.renderOrder = 1;
     return { object, positions, colors };
-  }, []);
+  }, [look]);
 
   useEffect(
     () => () => {
@@ -128,8 +135,8 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
         continue;
       }
       state.speed[p] = speed;
-      state.lon[p] += (wu * SPEED * dt) / Math.max(Math.cos(state.lat[p] * DEG), 0.15);
-      state.lat[p] += wv * SPEED * dt;
+      state.lon[p] += (wu * look.drift * dt) / Math.max(Math.cos(state.lat[p] * DEG), 0.15);
+      state.lat[p] += wv * look.drift * dt;
       if (state.lon[p] > 180) state.lon[p] -= 360;
       else if (state.lon[p] < -180) state.lon[p] += 360;
       if (shift) state.trail.copyWithin(p * TRAIL * 3, p * TRAIL * 3 + 3, (p + 1) * TRAIL * 3);
@@ -139,7 +146,7 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
     const fade = presence.current;
     for (let p = 0; p < COUNT; p++) {
       const life = state.life[p], age = state.age[p];
-      const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, 0.4 + state.speed[p] / 6) * fade;
+      const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, 0.4 + state.speed[p] / look.full) * fade;
       for (let t = 0; t < TRAIL - 1; t++) {
         const s = (p * (TRAIL - 1) + t) * 2;
         const a = (p * TRAIL + t) * 3;

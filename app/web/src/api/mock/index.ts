@@ -1,11 +1,12 @@
 // mock API with a small fake delay
 
 import type { Api } from "../client";
+import type { FlowField } from "../types";
 import { analyze } from "./analysis";
 import { demos, regions, regionTypes, variables } from "./catalog";
 import { trendCo2 } from "./co2";
 import { stationCompare, stations } from "./stations";
-import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion, trendVariables, trendWind } from "./trendmap";
+import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion, trendVariables, trendFlow } from "./trendmap";
 
 function respond<T>(produce: () => T, latency = 250): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -32,7 +33,7 @@ export const mockApi: Api = {
   trendGrid: () => respond(trendGrid, 400),
   trendGlobalMean: () => respond(trendGlobalMean),
   trendFrames: (_, kind) => respond(() => trendFrames(kind), 400),
-  trendWind: () => respond(trendWind),
+  trendFlow: (field: FlowField) => respond(() => trendFlow(field)),
   // the insights run on the real dataset only
   insightScan: () => unavailable(),
   insightDiagnose: () => unavailable(),

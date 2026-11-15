@@ -381,10 +381,11 @@ def build_trends(keys: list[str]) -> None:
         path.write_bytes(trendmaps.to_bytes(products))
         print(f"  {key:24s} {len(products['years'])} years, {path.stat().st_size / 1e6:.1f} MB, {time.time() - started:.1f} s")
         dataset.annual.cache_clear()
-    if (not keys or set(keys) & set(trendmaps.WIND_PARTS)) and all(k in dataset.catalog() for k in trendmaps.WIND_PARTS):
-        (out / "_wind.npz").write_bytes(trendmaps.to_bytes(trendmaps.build_wind()))
-        print("  _wind                    mean 10 m wind vector")
-        dataset.annual.cache_clear()
+    for name, parts in trendmaps.FLOWS.items():
+        if (not keys or set(keys) & set(parts)) and all(k in dataset.catalog() for k in parts):
+            (out / f"_{name}.npz").write_bytes(trendmaps.to_bytes(trendmaps.build_flow(name)))
+            print(f"  _{name:23s} mean {name} vector")
+            dataset.annual.cache_clear()
     # across all variables, so always rebuilt in full
     if (OUT / "regions" / "weights.parquet").exists():
         started = time.time()

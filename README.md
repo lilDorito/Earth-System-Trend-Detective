@@ -4,11 +4,11 @@
 
 **Live:** https://earth-system-trend-detective-nasa.vercel.app
 
-Pick a place on Earth and a variable, and find out whether it is really changing or just going up and down from year to year. Built on 35 gridded climate and ocean variables (2000-2025) from NASA, NOAA and partner datasets, plus 1,800 weather stations.
+Pick a place on Earth and a variable, and find out whether it is really changing or just going up and down from year to year. Built on 38 gridded climate and ocean variables (2000-2025) from NASA, NOAA and partner datasets, plus 1,800 weather stations.
 
 ## Features
 
-- **Trend map.** A globe coloured by the trend of any variable, with significant cells stippled (Mann-Kendall, Sen's slope, FDR 5%). Switch between change and actual values, play the years one by one, or overlay wind, isobars or the sea-ice edge.
+- **Trend map.** A globe coloured by the trend of any variable, with significant cells stippled (Mann-Kendall, Sen's slope, FDR 5%). Switch between change and actual values, play the years one by one, or overlay wind, ocean currents, isobars or the sea-ice edge.
 - **Any area.** Click a point, a country, a province or a sea, or draw a box. You get the area's trend, how it compares with the world average, and one stripe per year.
 - **Trust checks.** Is it a trend or a single jump? Does it hold if you start a few years later? Does an independent dataset agree? How much of it is El Niño? How many more years are needed to be sure?
 - **Every variable at once.** Ranks what changed most at a place, with false discoveries controlled across variables.

@@ -12,7 +12,7 @@ import { areaAt } from "@/features/globe/areaAt";
 import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline } from "@/features/globe/useOutline";
-import WindLayer from "@/features/globe/WindLayer";
+import FlowLayer from "@/features/globe/FlowLayer";
 import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
 import RegionPanel from "@/features/trendmap/RegionPanel";
@@ -38,7 +38,7 @@ export default function TrendMapPage() {
       meta: s.meta,
       variable: s.variable,
       variables: s.variables,
-      wind: s.wind,
+      flow: s.flow,
       loading: s.loading,
       region: s.region,
       regionLoading: s.regionLoading,
@@ -156,8 +156,8 @@ export default function TrendMapPage() {
         loading={waking ? WAKING_MESSAGE : s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
-        {style.wind && s.wind && (
-          <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={extras} />
+        {style.flow && s.flow?.field === style.flow && (
+          <FlowLayer key={s.flow.field} field={s.flow.field} u={s.flow.u} v={s.flow.v} nlat={s.flow.n_lat} nlon={s.flow.n_lon} grid={s.flow} visible={extras} />
         )}
         <ExtremaLabels points={highsLows} visible={extras} />
         {stations && stationStyle && (

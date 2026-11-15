@@ -293,30 +293,34 @@ def _frames_body(variable: str, start: int, end: int, kind: str) -> dict:
 
 @_one_at_a_time
 @lru_cache(maxsize=2)
-def _wind(start: int, end: int):
-    years = _years_of("merra2_u10m")
-    w = trendmaps.build_wind(years[(years >= start) & (years <= end)])
+def _flow(field: str, start: int, end: int):
+    years = _years_of(trendmaps.FLOWS[field][0])
+    w = trendmaps.build_flow(field, years[(years >= start) & (years <= end)])
     return (w["u"], w["v"]), w["frame_lat"], w["frame_lon"]
 
 
-@router.get("/wind")
-def wind(start: int | None = None, end: int | None = None):
+@router.get("/flow")
+def flow(field: str = Query("wind", pattern="^(wind|current)$"), start: int | None = None, end: int | None = None):
     if settings.data_mode != "live":
-        raise HTTPException(404, "Wind vectors need DATA_MODE=live")
-    start, end = _range("merra2_u10m", start, end)
-    pre = _pre("_wind")
+        raise HTTPException(404, "Flow vectors need DATA_MODE=live")
+    part = trendmaps.FLOWS[field][0]
+    if part not in dataset.catalog():
+        raise HTTPException(404, f"This dataset revision has no {field} field")
+    start, end = _range(part, start, end)
+    pre = _pre(f"_{field}")
     if pre is not None and (start, end) == (int(pre["years"][0]), int(pre["years"][-1])):
         u, v, lat, lon = pre["u"], pre["v"], pre["frame_lat"], pre["frame_lon"]
     else:
-        (u, v), lat, lon = _wind(start, end)
+        (u, v), lat, lon = _flow(field, start, end)
     return {
+        "field": field,
         "start": start,
         "end": end,
         "n_lat": int(len(lat)),
         "n_lon": int(len(lon)),
         **_geometry(lat, lon),
-        "u": _clean(u, 2),
-        "v": _clean(v, 2),
+        "u": _clean(u, 3),
+        "v": _clean(v, 3),
     }
 
 

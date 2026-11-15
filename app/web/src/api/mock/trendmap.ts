@@ -12,7 +12,8 @@ import type {
   TrendRegion,
   TrendRegionQuery,
   TrendVariable,
-  TrendWind,
+  FlowField,
+  TrendFlow,
 } from "../types";
 import { linearFit, rollingMean, round, twoSidedP } from "./stats";
 
@@ -244,15 +245,16 @@ export function trendRegion(query: TrendRegionQuery): TrendRegion {
   };
 }
 
-export function trendWind(): TrendWind {
+export function trendFlow(field: FlowField): TrendFlow {
+  const scale = field === "wind" ? 1 : 0.05;
   const u: number[] = [];
   const v: number[] = [];
   LATS.forEach((lat) =>
     LONS.forEach((lon) => {
       const phi = rad(lat);
-      u.push(round(-6 * Math.cos(3 * phi) * Math.cos(phi) + 1.5 * Math.sin(rad(lon * 2)), 2));
-      v.push(round(-2.5 * Math.sin(6 * phi) * Math.cos(phi) + Math.cos(rad(lon * 3 + lat)), 2));
+      u.push(round(scale * (-6 * Math.cos(3 * phi) * Math.cos(phi) + 1.5 * Math.sin(rad(lon * 2))), 3));
+      v.push(round(scale * (-2.5 * Math.sin(6 * phi) * Math.cos(phi) + Math.cos(rad(lon * 3 + lat))), 3));
     }),
   );
-  return { ...GEOMETRY, start: YEARS[0], end: YEARS[YEARS.length - 1], n_lat: LATS.length, n_lon: LONS.length, u, v };
+  return { ...GEOMETRY, field, start: YEARS[0], end: YEARS[YEARS.length - 1], n_lat: LATS.length, n_lon: LONS.length, u, v };
 }

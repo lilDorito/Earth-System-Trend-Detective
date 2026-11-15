@@ -17,7 +17,8 @@ import type {
   TrendRegion,
   TrendRegionQuery,
   TrendVariable,
-  TrendWind,
+  FlowField,
+  TrendFlow,
   VariableInfo,
   Diagnosis,
   Divergence,
@@ -101,7 +102,7 @@ export const httpApi = {
   trendGlobalMean: (variable: string) => request<GlobalMean>(`/api/trendmap/global-mean?${query({ variable })}`),
   trendFrames: (variable: string, kind: "anomaly" | "values" = "anomaly") =>
     request<TrendFrames>(`/api/trendmap/frames?${query({ variable, kind })}`),
-  trendWind: () => request<TrendWind>("/api/trendmap/wind"),
+  trendFlow: (field: FlowField) => request<TrendFlow>(`/api/trendmap/flow?${query({ field })}`),
   insightScan: (place: InsightPlace) => request<Scan>(`/api/insights/scan?${placeQuery(place)}`),
   insightDiagnose: (variable: string, place: InsightPlace) =>
     request<Diagnosis>(`/api/insights/diagnose?${query({ variable })}&${placeQuery(place)}`),

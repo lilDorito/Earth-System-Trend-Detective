@@ -74,7 +74,7 @@ function Co2Context({ note }: { note: string }) {
 
 function Legend() {
   const s = useTrendMapStore(
-    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, wind: s.wind, hotspot: s.hotspot })),
+    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, flow: s.flow, hotspot: s.hotspot })),
   );
   if (s.hotspot) {
     return (
@@ -137,9 +137,9 @@ function Legend() {
             : "Lines of equal change; H and L mark where pressure rose or fell most."}
         </p>
       )}
-      {style.wind && s.wind && (
+      {style.flow && s.flow?.field === style.flow && (
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Streaks drift with the mean 10 m wind, {s.wind.start}-{s.wind.end}.
+          Streaks drift with the mean {style.flow === "wind" ? "10 m wind" : "surface current"}, {s.flow.start}-{s.flow.end}.
         </p>
       )}
       {!values && s.view === "trend" && (

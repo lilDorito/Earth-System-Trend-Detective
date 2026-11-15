@@ -17,7 +17,8 @@ CELL_KM2 = 111.195**2  # one square degree at the equator
 CLUSTERS_KEPT = 8  # largest areas of each sign
 MIN_CLUSTER_KM2 = 150_000  # smaller patches of one sign are noise at this resolution
 NINO34 = (-5.0, 5.0, -170.0, -120.0)  # south, north, west, east
-WIND_PARTS = ("merra2_u10m", "merra2_v10m")
+# eastward and northward parts of the fields drawn as drifting streaks
+FLOWS = {"wind": ("merra2_u10m", "merra2_v10m"), "current": ("u_current", "v_current")}
 
 
 def nanmean(values: np.ndarray, axis: int) -> np.ndarray:
@@ -141,8 +142,8 @@ def build(key: str) -> dict[str, np.ndarray]:
     }
 
 
-def build_wind(years: np.ndarray | None = None) -> dict[str, np.ndarray]:
-    u, v = (dataset.annual(key) for key in WIND_PARTS)
+def build_flow(name: str, years: np.ndarray | None = None) -> dict[str, np.ndarray]:
+    u, v = (dataset.annual(key) for key in FLOWS[name])
     common, iu, iv = np.intersect1d(u.years, v.years, return_indices=True)
     if years is not None:
         keep = np.isin(common, years)

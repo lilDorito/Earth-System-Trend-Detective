@@ -18,7 +18,7 @@ import type {
   TrendPoint,
   TrendRegion,
   TrendVariable,
-  TrendWind,
+  TrendFlow,
 } from "@/api/types";
 import { styleFor } from "@/features/trendmap/styles";
 import { elementFor } from "@/features/stations/elements";
@@ -70,7 +70,7 @@ type TrendMapState = {
   globalMean: GlobalMean | null;
   frames: TrendFrames | null;
   valueFrames: TrendFrames | null;
-  wind: TrendWind | null;
+  flow: TrendFlow | null;
   loading: boolean;
   error: string | null;
 
@@ -145,7 +145,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   globalMean: null,
   frames: null,
   valueFrames: null,
-  wind: null,
+  flow: null,
   loading: false,
   error: null,
 
@@ -195,20 +195,21 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
     const id = ++variableRequestId;
     set({ variable, loading: true, error: null, divergence: null, divergenceArea: null, hotspot: null, hotspotLoading: null });
     const values = get().display === "values";
-    // the wind field is the same for every wind variable, so it is fetched once
-    const wantWind = styleFor(variable).wind && !get().wind;
+    // one field for all wind variables and one for all current variables: fetched when the kind changes
+    const field = styleFor(variable).flow;
+    const kept = get().flow?.field === field ? get().flow : null;
     try {
-      const [meta, grid, globalMean, frames, valueFrames, wind] = await Promise.all([
+      const [meta, grid, globalMean, frames, valueFrames, flow] = await Promise.all([
         api.trendMeta(variable),
         api.trendGrid(variable),
         api.trendGlobalMean(variable),
         api.trendFrames(variable),
         values ? api.trendFrames(variable, "values") : null,
-        wantWind ? api.trendWind().catch(() => null) : get().wind,
+        field && !kept ? api.trendFlow(field).catch(() => null) : kept,
       ]);
       if (id !== variableRequestId) return;
       const year = frames.years.includes(get().frameYear) ? get().frameYear : frames.years[frames.years.length - 1];
-      set({ meta, grid, globalMean, frames, valueFrames, wind, frameYear: year, loading: false });
+      set({ meta, grid, globalMean, frames, valueFrames, flow, frameYear: year, loading: false });
     } catch (e) {
       if (id === variableRequestId) set({ loading: false, error: message(e) });
       return;

@@ -220,7 +220,9 @@ export type TrendFrames = GridGeometry & {
   global_mean: (number | null)[];
 };
 
-export type TrendWind = GridGeometry & {
+export type FlowField = "wind" | "current";
+export type TrendFlow = GridGeometry & {
+  field: FlowField;
   start: number;
   end: number;
   n_lat: number;

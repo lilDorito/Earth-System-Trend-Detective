@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from .config import ROOT
 
 REPO = os.environ.get("HF_DATASET", "lilDorito/earth-trend-data")
-REVISION = os.environ.get("HF_DATASET_REVISION", "df16deab80567b3780e26549d90d78b944ce09d9")
+REVISION = os.environ.get("HF_DATASET_REVISION", "65c3103213ebd3c73f75c297e2d973340e70f739")
 LOCAL = os.environ.get("HF_DATASET_PATH")  # a local copy (e.g. data/hf) instead of the Hub
 
 LAT = np.arange(-89.5, 90, 1.0)
@@ -36,7 +36,7 @@ DISPLAY_UNITS = {
     "cm LWE": (1, "cm"),
     "km2/month": (1, "km²/month"),
 }
-KEY_UNITS = {"sla": (1000, "mm"), "aod": (1, "AOD"), "ndvi": (1, "NDVI")}
+KEY_UNITS = {"sla": (1000, "mm"), "aod": (1, "AOD"), "ndvi": (1, "NDVI")} | {key: (100, "cm/s") for key in ("u_current", "v_current", "current_speed")}
 
 # variables built from others: speed of the annual mean wind vector (smaller than the mean speed where winds turn)
 VIRTUAL = {

@@ -476,7 +476,7 @@ export default function GlobeCanvas({
         ref={readout}
         style={insets}
         className={cn(
-          "pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] font-mono text-[11px] tabular-nums text-muted-foreground [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)] sm:bottom-4 sm:left-4",
+          "globe-hint pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] font-mono text-[11px] tabular-nums text-muted-foreground [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)] sm:bottom-4 sm:left-4",
           paneled &&
             "sm:bottom-auto sm:left-[calc((var(--left)+100%)/2)] sm:top-4 sm:max-w-[40%] sm:-translate-x-1/2 sm:text-center lg:left-[calc((var(--left)+100%-var(--right))/2)] lg:top-14",
         )}

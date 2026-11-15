@@ -1,12 +1,16 @@
 // service worker: installable app shell that opens offline
-// - pages: network first, cached shell when offline
-// - hashed build assets, textures, region outlines, fonts: cache first
+// - /assets/: hashed build files, whose name changes with their content: cache first
+// - everything else of ours (pages, region data, textures, icons): network first, the cache only when offline,
+//   so a new version of a file that keeps its name (regions/index.json) always reaches the phone
 // - /api: always network (results must be fresh); never cached
+//
+// v1 served region data and textures cache-first and kept stale copies forever; the new version name
+// makes activate() delete those caches on every phone that has them
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `shell-${VERSION}`;
 const STATIC = `static-${VERSION}`;
-const SHELL_FILES = ["/", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png", "/regions/index.json"];
+const SHELL_FILES = ["/", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(SHELL_FILES)));
@@ -30,6 +34,18 @@ const cacheFirst = async (request) => {
   return response;
 };
 
+const networkFirst = async (request, cacheName, key = request) => {
+  try {
+    const response = await fetch(request);
+    if (response.ok) (await caches.open(cacheName)).put(key, response.clone());
+    return response;
+  } catch (error) {
+    const cached = await caches.match(key);
+    if (cached) return cached;
+    throw error;
+  }
+};
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -37,18 +53,11 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) caches.open(SHELL).then((cache) => cache.put("/", response.clone()));
-          return response;
-        })
-        .catch(() => caches.match("/")),
-    );
-    return;
-  }
-
-  if (/^\/(assets|textures|regions|icons)\//.test(url.pathname) || /\.(woff2?|png|jpg|svg)$/.test(url.pathname)) {
+    // any page of the app is the same shell
+    event.respondWith(networkFirst(request, SHELL, "/"));
+  } else if (url.pathname.startsWith("/assets/")) {
     event.respondWith(cacheFirst(request));
+  } else if (/^\/(textures|regions|icons)\//.test(url.pathname) || /\.(webmanifest|svg|png|jpg|json)$/.test(url.pathname)) {
+    event.respondWith(networkFirst(request, STATIC));
   }
 });

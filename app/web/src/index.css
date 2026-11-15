@@ -27,9 +27,10 @@
   --globe-sky: #0a0b0d; /* behind the 3D globe; read by GlobeCanvas, so a hex colour */
 }
 
-/* marshmallow theme on phones only: soft pink, buttery yellow, plum text, rounder corners */
+/* marshmallow theme: chosen with the header switch (data-theme on <html>, see lib/theme.ts), phones only for now;
+   soft pink, buttery yellow, plum text, rounder corners */
 @media (max-width: 639px) {
-  :root {
+  :root[data-theme="marshmallow"] {
     --background: oklch(0.955 0.03 350);
     --foreground: oklch(0.33 0.07 340);
     --card: oklch(0.985 0.035 95);
@@ -55,34 +56,34 @@
   }
 
   /* puffier corners than the crisp desktop look */
-  .rounded-sm {
+  [data-theme="marshmallow"] .rounded-sm {
     border-radius: 6px;
   }
-  .rounded-md {
+  [data-theme="marshmallow"] .rounded-md {
     border-radius: 10px;
   }
-  .rounded-lg {
+  [data-theme="marshmallow"] .rounded-lg {
     border-radius: 14px;
   }
 
   /* sliders: the browser's own track turns dark grey next to a pink accent, so draw a pastel one */
-  input[type="range"] {
+  [data-theme="marshmallow"] input[type="range"] {
     appearance: none;
     background: transparent;
   }
-  input[type="range"]::-webkit-slider-runnable-track {
+  [data-theme="marshmallow"] input[type="range"]::-webkit-slider-runnable-track {
     height: 6px;
     border-radius: 999px;
     background: var(--accent);
     box-shadow: inset 0 0 0 1px var(--input);
   }
-  input[type="range"]::-moz-range-track {
+  [data-theme="marshmallow"] input[type="range"]::-moz-range-track {
     height: 6px;
     border-radius: 999px;
     background: var(--accent);
     box-shadow: inset 0 0 0 1px var(--input);
   }
-  input[type="range"]::-webkit-slider-thumb {
+  [data-theme="marshmallow"] input[type="range"]::-webkit-slider-thumb {
     appearance: none;
     width: 22px;
     height: 22px;
@@ -92,7 +93,7 @@
     border: 3px solid var(--card);
     box-shadow: 0 1px 4px oklch(0.4 0.1 350 / 35%);
   }
-  input[type="range"]::-moz-range-thumb {
+  [data-theme="marshmallow"] input[type="range"]::-moz-range-thumb {
     width: 16px;
     height: 16px;
     border-radius: 999px;
@@ -100,8 +101,13 @@
     border: 3px solid var(--card);
     box-shadow: 0 1px 4px oklch(0.4 0.1 350 / 35%);
   }
-  input[type="range"]:disabled {
+  [data-theme="marshmallow"] input[type="range"]:disabled {
     opacity: 0.45;
+  }
+
+  /* the globe hint has a black glow for the dark sky; a soft pink one reads cleaner here */
+  [data-theme="marshmallow"] .globe-hint {
+    text-shadow: 0 0 3px var(--background), 0 0 6px var(--background);
   }
 }
 

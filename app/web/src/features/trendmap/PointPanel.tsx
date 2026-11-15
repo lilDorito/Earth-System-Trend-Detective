@@ -29,7 +29,7 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="absolute inset-x-3 bottom-3 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:w-[380px]"
+      className="scrollbar-thin absolute inset-x-3 bottom-3 z-20 max-h-[65%] overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-[380px]"
     >
       <Panel>
         <div className="flex items-center justify-between gap-2 px-4 py-3">
@@ -71,7 +71,7 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
         </PanelSection>
 
         <PanelSection>
-          <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} units={units} height={200} />
+          <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} units={units} height={window.matchMedia("(max-width: 639px)").matches ? 160 : 200} />
         </PanelSection>
       </Panel>
     </motion.aside>

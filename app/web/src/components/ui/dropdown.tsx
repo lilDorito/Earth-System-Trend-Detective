@@ -40,9 +40,10 @@ export function Dropdown({
   // closes on a click anywhere else
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    // pointerdown covers touch too, without waiting for the emulated mouse events
+    const onDown = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
   // opening highlights the current item and scrolls it into view
@@ -103,7 +104,7 @@ export function Dropdown({
         className={cn(
           "flex cursor-pointer items-center text-left transition-colors focus-visible:outline-none",
           variant === "field"
-            ? "h-8 w-full min-w-0 gap-2 rounded-md border border-input bg-background pl-2.5 pr-2 text-sm hover:border-foreground/25 focus-visible:border-primary/60 focus-visible:ring-1 focus-visible:ring-ring"
+            ? "h-8 pointer-coarse:h-10 w-full min-w-0 gap-2 rounded-md border border-input bg-background pl-2.5 pr-2 text-sm hover:border-foreground/25 focus-visible:border-primary/60 focus-visible:ring-1 focus-visible:ring-ring"
             : "gap-1 border-b border-dashed border-foreground/30 font-mono text-[11px] text-foreground hover:border-foreground/60 focus-visible:ring-1 focus-visible:ring-ring",
         )}
       >
@@ -117,7 +118,7 @@ export function Dropdown({
           role="listbox"
           aria-label={ariaLabel}
           className={cn(
-            "scrollbar-thin absolute top-full z-30 mt-1 max-h-72 min-w-full overflow-y-auto rounded-md border bg-popover py-1 text-popover-foreground shadow-lg shadow-black/40",
+            "scrollbar-thin absolute top-full z-30 mt-1 max-h-72 min-w-full max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-md border bg-popover py-1 text-popover-foreground shadow-lg shadow-black/40",
             align === "right" ? "right-0" : "left-0",
             variant === "inline" && "w-max min-w-40",
           )}
@@ -138,7 +139,7 @@ export function Dropdown({
                 onClick={() => pick(item)}
                 onMouseEnter={() => !item.disabled && setActive(i)}
                 className={cn(
-                  "flex items-center gap-2 px-2.5 py-1.5 text-sm",
+                  "flex items-center gap-2 px-2.5 py-1.5 text-sm pointer-coarse:py-2.5",
                   item.disabled ? "cursor-default text-muted-foreground" : "cursor-pointer",
                   i === active && !item.disabled && "bg-accent",
                   variant === "inline" && "font-mono text-[12px]",

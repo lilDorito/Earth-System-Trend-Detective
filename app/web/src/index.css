@@ -74,6 +74,19 @@
 
   body {
     @apply bg-background font-sans text-foreground antialiased;
+    /* app-like on phones: no pull-to-refresh or rubber-band bounce, no grey tap flash */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* iOS zooms into any focused field under 16px */
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 
   ::selection {

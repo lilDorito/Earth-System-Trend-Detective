@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crosshair, SquareDashed } from "lucide-react";
+import { Crosshair, SquareDashed, X } from "lucide-react";
 import type { BBox } from "@/api/types";
 import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
@@ -36,6 +36,7 @@ type GlobeCanvasProps = {
   onBox?: (box: BBox) => void;
   outline?: Ring[] | null;
   hint?: string;
+  touchHint?: string; // shown instead of hint on touch screens
   detail?: boolean;
   loading?: string | null;
   children?: ReactNode;
@@ -286,7 +287,8 @@ export default function GlobeCanvas({
   onClear,
   onBox,
   outline = null,
-  hint = "",
+  hint: mouseHint = "",
+  touchHint,
   detail = true,
   loading = null,
   children,
@@ -296,6 +298,9 @@ export default function GlobeCanvas({
   const snap = useRef(null) as CitySnap;
   const [mapReady, setMapReady] = useState(false);
   const [boxTool, setBoxTool] = useState(false);
+  const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
+  const hint = (touch && touchHint) || mouseHint;
+  const hasSelection = !!marker || !!outline?.length;
   // imagery, borders and labels appear together instead of popping in one by one
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
@@ -350,11 +355,13 @@ export default function GlobeCanvas({
       />
       <AnimatePresence>{status && <Loading key={status} label={status} />}</AnimatePresence>
       {onBox && ready && (
-        // what a click or drag on the globe does; shift-drag draws a box in either mode
+        // what a click or drag on the globe does; shift-drag draws a box in either mode.
+        // phones get a thumb-reachable rail on the right edge, with a clear button in place of right-click
+        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 sm:left-1/2 sm:right-auto sm:top-4 sm:-translate-x-1/2 sm:translate-y-0 sm:flex-row">
         <div
           role="radiogroup"
           aria-label="Selection mode"
-          className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:top-4"
+          className="flex flex-col items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:flex-row"
         >
           {([
             [false, Crosshair, "Point"],
@@ -366,16 +373,30 @@ export default function GlobeCanvas({
               role="radio"
               aria-checked={boxTool === box}
               onClick={() => setBoxTool(box)}
+              aria-label={label}
               title={box ? "Drag on the globe to draw a box (shift-drag works in point mode too)" : "Click to pick a point"}
               className={cn(
-                "flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-sm font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:w-auto sm:flex-row sm:gap-1.5 sm:px-2.5 sm:text-[11px]",
                 boxTool === box && "bg-accent text-foreground",
               )}
             >
-              <Icon className="size-3.5" />
+              <Icon className="size-4 sm:size-3.5" />
               {label}
             </button>
           ))}
+        </div>
+        {onClear && hasSelection && (
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear selection"
+            title="Clear selection (right-click on the globe)"
+            className="flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border bg-card/85 font-mono text-[10px] text-muted-foreground shadow-lg shadow-black/30 backdrop-blur transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+          >
+            <X className="size-4" />
+            Clear
+          </button>
+        )}
         </div>
       )}
       <div

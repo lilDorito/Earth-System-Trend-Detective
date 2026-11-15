@@ -105,7 +105,8 @@ export default function RegionPanel({ region, shifted }: { region: TrendRegion; 
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className={cn(
-        "absolute inset-x-3 top-3 z-10 max-h-[calc(100%-1.5rem)] overflow-y-auto sm:inset-x-auto sm:right-4 sm:top-4 sm:w-[380px]",
+        // phones: a bottom sheet over the lower part of the globe; wider screens: a side panel
+        "scrollbar-thin absolute inset-x-3 bottom-3 z-10 max-h-[65%] overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-[380px]",
         shifted && "sm:right-[412px]",
       )}
     >
@@ -127,8 +128,8 @@ export default function RegionPanel({ region, shifted }: { region: TrendRegion; 
         </div>
 
         <PanelSection className="space-y-2">
-          <p className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-medium tabular-nums">{formatSigned(region.total_change)} {units}</span>
+          <p className="flex flex-wrap items-baseline gap-x-2">
+            <span className="whitespace-nowrap font-mono text-2xl font-medium tabular-nums">{formatSigned(region.total_change)} {units}</span>
             <span className="text-sm text-muted-foreground">
               over the period, {formatSigned(region.slope_decade)} {units} / decade
             </span>

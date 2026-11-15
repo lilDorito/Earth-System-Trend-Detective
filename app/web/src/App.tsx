@@ -1,8 +1,8 @@
-// app shell: header, nav and routes
+// app shell: header, nav and routes; phones get a bottom tab bar instead of the header links
 
 import { lazy, Suspense, useEffect } from "react";
 import { Link, NavLink, Route, Routes } from "react-router";
-import { Earth, LoaderCircle } from "lucide-react";
+import { BookOpen, Compass, Earth, Globe, LoaderCircle, PlayCircle, type LucideIcon } from "lucide-react";
 import { usingMockData } from "@/api";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/utils";
@@ -14,11 +14,11 @@ const DemosPage = lazy(() => import("@/pages/DemosPage"));
 const LearnPage = lazy(() => import("@/pages/LearnPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
-const links = [
-  { to: "/", label: "Explore" },
-  { to: "/map", label: "Trend map" },
-  { to: "/demos", label: "Demos" },
-  { to: "/learn", label: "Learn" },
+const links: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: "/", label: "Explore", icon: Compass },
+  { to: "/map", label: "Trend map", icon: Globe },
+  { to: "/demos", label: "Demos", icon: PlayCircle },
+  { to: "/learn", label: "Learn", icon: BookOpen },
 ];
 
 function Header() {
@@ -26,9 +26,9 @@ function Header() {
     <header className="flex h-11 shrink-0 items-stretch gap-6 border-b px-3 sm:px-5">
       <Link to="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
         <Earth className="size-4 text-primary" />
-        <span className="hidden sm:inline">Earth Trend Detective</span>
+        <span>Earth Trend Detective</span>
       </Link>
-      <nav className="flex items-stretch gap-5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav className="hidden sm:flex items-stretch gap-5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {links.map((link) => (
           <NavLink
             key={link.to}
@@ -46,11 +46,37 @@ function Header() {
         ))}
       </nav>
       {usingMockData && (
-        <Status tone="warning" className="ml-auto hidden md:inline-flex" title="Synthetic data generated in the browser">
+        <Status tone="warning" className="ml-auto self-center" title="Synthetic data generated in the browser">
           mock data
         </Status>
       )}
     </header>
+  );
+}
+
+function TabBar() {
+  return (
+    <nav
+      aria-label="Main"
+      className="grid shrink-0 grid-cols-4 border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden"
+    >
+      {links.map(({ to, label, icon: Icon }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end
+          className={({ isActive }) =>
+            cn(
+              "flex h-14 select-none flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground transition-colors active:bg-accent",
+              isActive && "text-primary",
+            )
+          }
+        >
+          <Icon className="size-5" strokeWidth={1.75} />
+          {label}
+        </NavLink>
+      ))}
+    </nav>
   );
 }
 
@@ -70,7 +96,7 @@ export default function App() {
   }, [loadCatalog]);
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh flex-col pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <Header />
       <main className="min-h-0 flex-1">
         <Suspense fallback={<PageFallback />}>
@@ -83,6 +109,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </main>
+      <TabBar />
     </div>
   );
 }

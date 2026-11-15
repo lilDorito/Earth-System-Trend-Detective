@@ -112,7 +112,7 @@ export default function TimelineBar() {
               s.setFrameYear(+e.target.value);
             }}
             aria-label="Year"
-            className="mt-1 h-1.5 w-full cursor-pointer accent-primary"
+            className="mt-1 h-1.5 w-full cursor-pointer accent-primary pointer-coarse:h-6"
           />
           <div className="mt-0.5 flex justify-between font-mono text-[10px] text-muted-foreground">
             <span>{first}</span>

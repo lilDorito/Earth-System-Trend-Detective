@@ -40,6 +40,7 @@ export default function ExplorerPage() {
           focus={focus}
           autoRotate={!location}
           hint="Click to pick a place, shift-drag for a box, right-click to clear"
+          touchHint="Tap to pick a place, pinch to zoom"
           onPick={(lat, lon, name) => setLocation({ type: "point", lat: round(lat), lon: round(lon) }, name ?? null)}
           onClear={clearLocation}
           onBox={setBox}

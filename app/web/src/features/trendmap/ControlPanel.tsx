@@ -149,9 +149,15 @@ export default function ControlPanel() {
   }, [s.hasSelection]);
 
   return (
-    <Panel className="absolute left-3 top-3 w-[300px] max-w-[calc(100%-1.5rem)] sm:left-4 sm:top-4">
+    // on phones the open panel sits above the point and region sheets; collapsing it reveals them again
+    <Panel
+      className={cn(
+        "scrollbar-thin absolute inset-x-3 top-3 max-h-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain sm:inset-x-auto sm:left-4 sm:top-4 sm:w-[300px]",
+        open && "max-sm:z-30",
+      )}
+    >
       <div className="flex items-center justify-between gap-2 px-4 py-3">
-        <div>
+        <div className="min-w-0 flex-1 cursor-pointer sm:cursor-auto" onClick={() => isPhone() && setOpen(!open)}>
           <h2 className="text-sm font-semibold">{s.meta?.name ?? "Trend map"}</h2>
           <p className="text-xs text-muted-foreground">
             {s.meta ? `Annual means, ${s.meta.years[0]} to ${s.meta.years[1]}` : "Loading"}
@@ -234,7 +240,7 @@ export default function ControlPanel() {
                 value={s.opacity}
                 disabled={!s.showTrend}
                 onChange={(e) => s.setOpacity(+e.target.value)}
-                className="h-1.5 w-32 cursor-pointer accent-primary disabled:cursor-default"
+                className="h-1.5 w-32 cursor-pointer accent-primary disabled:cursor-default pointer-coarse:h-6"
               />
             </label>
           </PanelSection>
@@ -253,7 +259,7 @@ export default function ControlPanel() {
                     aria-pressed={on}
                     onClick={() => void s.setRegion(on ? null : { kind: "preset", name })}
                     className={cn(
-                      "h-6 cursor-pointer rounded-sm border border-input px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "h-6 pointer-coarse:h-9 pointer-coarse:px-3 cursor-pointer rounded-sm border border-input px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       on && "bg-accent text-foreground",
                     )}
                   >
@@ -263,7 +269,7 @@ export default function ControlPanel() {
               })}
             </div>
             <RegionSearch onPick={(boundary) => void s.setRegion({ kind: "boundary", boundary })} className="mt-2" />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">or draw one with Box above the globe</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">or draw one with the Box tool on the globe</p>
             {s.regionError && <p className="mt-2 text-xs text-warning">{s.regionError}</p>}
           </PanelSection>
 

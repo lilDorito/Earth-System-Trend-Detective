@@ -61,6 +61,16 @@ export const valueAxis = {
   splitLine: { lineStyle: { color: palette.split } },
 };
 
+// vertical swipes scroll the page instead of getting stuck on a chart; pinch and sideways drags still zoom and pan it
 export default function Chart({ option, height }: { option: EChartsOption; height: number }) {
-  return <ReactEChartsCore echarts={echarts} option={option} notMerge lazyUpdate style={{ height, width: "100%" }} />;
+  return (
+    <ReactEChartsCore
+      echarts={echarts}
+      option={option}
+      notMerge
+      lazyUpdate
+      className="touch-pan-y [&_*]:touch-pan-y!"
+      style={{ height, width: "100%" }}
+    />
+  );
 }

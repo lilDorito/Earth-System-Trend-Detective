@@ -97,7 +97,10 @@ export default function SeriesChart({ response }: { response: AnalyzeResponse })
         <Segmented size="sm" value={view} options={views} onChange={setView} />
       </div>
       <Chart option={option} height={260} />
-      <p className="mt-1 text-[11px] text-muted-foreground">Scroll to zoom, drag to pan.</p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        <span className="pointer-coarse:hidden">Scroll to zoom, drag to pan.</span>
+        <span className="hidden pointer-coarse:inline">Pinch to zoom, swipe sideways to pan.</span>
+      </p>
     </motion.section>
   );
 }

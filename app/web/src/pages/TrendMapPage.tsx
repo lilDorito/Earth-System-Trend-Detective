@@ -63,9 +63,11 @@ export default function TrendMapPage() {
         focus={s.focus}
         autoRotate={!s.picked && !s.regionTarget}
         hint="Click to inspect a grid cell, shift-drag for a box, right-click to clear"
+        touchHint="Tap a cell to inspect it, pinch to zoom"
         detail={!s.showTrend}
         onPick={(lat, lon, city) => void s.selectPoint(lat, lon, city)}
-        onClear={s.clearSelection}
+        // clears the picked cell first, then the region
+        onClear={() => (s.picked ? s.clearSelection() : void s.setRegion(null))}
         onBox={(box) => void s.setRegion({ kind: "box", box })}
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
@@ -86,7 +88,8 @@ export default function TrendMapPage() {
         {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null} />}
         {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
       </AnimatePresence>
-      {s.showTrend && !(s.selected && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
+      {/* phones show one bottom sheet at a time: the timeline gives way to a point or region panel */}
+      {s.showTrend && !((s.selected || s.region) && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
       {s.pointLoading && !s.selected && (
         <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" /> loading cell

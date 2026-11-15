@@ -1,5 +1,6 @@
 // result area: placeholder, loading, verdict and chart
 
+import { useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,10 +13,19 @@ export default function Results() {
   const { response, loading, error } = useAppStore(
     useShallow((s) => ({ response: s.response, loading: s.loading, error: s.error })),
   );
+  const top = useRef<HTMLDivElement>(null);
+  const fetchedAt = response?.meta.fetched_at;
+
+  // on a phone the result lands below the globe and the inputs, so bring it into view
+  useEffect(() => {
+    if ((fetchedAt || error) && window.matchMedia("(max-width: 1023px)").matches) {
+      top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [fetchedAt, error]);
 
   if (error) {
     return (
-      <div className="px-5 py-4">
+      <div ref={top} className="scroll-mt-2 px-5 py-4">
         <Alert>{error}</Alert>
       </div>
     );
@@ -23,7 +33,7 @@ export default function Results() {
 
   if (response) {
     return (
-      <div className={cn("transition-opacity", loading && "pointer-events-none opacity-40")}>
+      <div ref={top} className={cn("scroll-mt-2 transition-opacity", loading && "pointer-events-none opacity-40")}>
         <Verdict key={response.meta.fetched_at} response={response} />
         <SeriesChart key={`chart-${response.meta.fetched_at}`} response={response} />
       </div>

@@ -16,3 +16,5 @@ export function useMedia(query: string): boolean {
 
 // below this the selection panels become a bottom sheet and the side panels stop sharing the screen
 export const NARROW = "(max-width: 1023px)";
+// from this width the globe fits between both side columns without shrinking
+export const ROOMY = "(min-width: 1280px)";

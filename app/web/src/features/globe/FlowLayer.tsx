@@ -2,17 +2,21 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { BufferAttribute, BufferGeometry, LineBasicMaterial, LineSegments } from "three";
+import { AdditiveBlending, type InterleavedBufferAttribute } from "three";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import type { FlowField, GridGeometry } from "@/api/types";
 
 const COUNT = 6000;
 const TRAIL = 10; // points per streak
 const STEP_S = 1 / 15; // a new trail point this often
 // drift in degrees per second for one unit of speed (wind in m/s, currents in cm/s), the speed drawn at full
-// brightness, and the streak colour; currents are some twenty times slower, so they are sped up to read alike
-const LOOK: Record<FlowField, { drift: number; full: number; color: [number, number, number] }> = {
-  wind: { drift: 0.6, full: 6, color: [0.92, 0.95, 1] },
-  current: { drift: 0.09, full: 35, color: [0.75, 0.97, 0.95] },
+// brightness, the faintest a moving streak gets, line width in px and colour; currents are some twenty times
+// slower and mostly weak, so they move faster, start brighter and draw thicker to read alike
+const LOOK: Record<FlowField, { drift: number; full: number; floor: number; width: number; color: [number, number, number] }> = {
+  wind: { drift: 0.6, full: 6, floor: 0.4, width: 1.2, color: [0.92, 0.95, 1] },
+  current: { drift: 0.13, full: 20, floor: 0.6, width: 2.4, color: [0.7, 1, 0.96] },
 };
 const RADIUS = 1.0014;
 const DEG = Math.PI / 180;
@@ -64,25 +68,27 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
     }),
     [],
   );
+  const size = useThree((s) => s.size);
+  // thick lines; added onto the globe, so the fade is carried by the colour (black adds nothing)
   const { object, positions, colors } = useMemo(() => {
-    const vertices = COUNT * (TRAIL - 1) * 2;
-    const positions = new Float32Array(vertices * 3);
-    const colors = new Float32Array(vertices * 4);
-    for (let k = 0; k < vertices; k++) colors.set([...look.color, 0], k * 4);
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new BufferAttribute(colors, 4));
-    const material = new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false });
-    const object = new LineSegments(geometry, material);
+    const segments = COUNT * (TRAIL - 1);
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(new Float32Array(segments * 6));
+    geometry.setColors(new Float32Array(segments * 6));
+    const positions = (geometry.attributes.instanceStart as InterleavedBufferAttribute).data;
+    const colors = (geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data;
+    const material = new LineMaterial({ vertexColors: true, linewidth: look.width, transparent: true, blending: AdditiveBlending, depthWrite: false });
+    const object = new LineSegments2(geometry, material);
     object.frustumCulled = false;
     object.renderOrder = 1;
     return { object, positions, colors };
   }, [look]);
+  useEffect(() => void object.material.resolution.set(size.width, size.height), [object, size]);
 
   useEffect(
     () => () => {
       object.geometry.dispose();
-      (object.material as LineBasicMaterial).dispose();
+      object.material.dispose();
     },
     [object],
   );
@@ -146,17 +152,21 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
     const fade = presence.current;
     for (let p = 0; p < COUNT; p++) {
       const life = state.life[p], age = state.age[p];
-      const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, 0.4 + state.speed[p] / look.full) * fade;
+      const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, look.floor + state.speed[p] / look.full) * fade;
       for (let t = 0; t < TRAIL - 1; t++) {
-        const s = (p * (TRAIL - 1) + t) * 2;
+        const o = (p * (TRAIL - 1) + t) * 6;
         const a = (p * TRAIL + t) * 3;
-        for (let k = 0; k < 6; k++) positions[s * 3 + k] = state.trail[a + k];
-        colors[s * 4 + 3] = alive * (t / (TRAIL - 1));
-        colors[s * 4 + 7] = alive * ((t + 1) / (TRAIL - 1));
+        for (let k = 0; k < 6; k++) positions.array[o + k] = state.trail[a + k];
+        const from = alive * (t / (TRAIL - 1));
+        const to = alive * ((t + 1) / (TRAIL - 1));
+        for (let k = 0; k < 3; k++) {
+          colors.array[o + k] = look.color[k] * from;
+          colors.array[o + 3 + k] = look.color[k] * to;
+        }
       }
     }
-    object.geometry.attributes.position.needsUpdate = true;
-    object.geometry.attributes.color.needsUpdate = true;
+    positions.needsUpdate = true;
+    colors.needsUpdate = true;
     invalidate();
   });
 

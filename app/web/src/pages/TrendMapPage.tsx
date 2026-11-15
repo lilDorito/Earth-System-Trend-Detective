@@ -28,7 +28,7 @@ import TimelineBar from "@/features/trendmap/TimelineBar";
 import { useTrendLayer } from "@/features/trendmap/useTrendLayer";
 import { WAKING_MESSAGE, useServerStatus } from "@/api/status";
 import { Panel } from "@/components/ui/panel";
-import { NARROW, useMedia } from "@/lib/useMedia";
+import { NARROW, ROOMY, useMedia } from "@/lib/useMedia";
 import { cn } from "@/lib/utils";
 import { targetArea, targetLabel, useTrendMapStore } from "@/store/useTrendMapStore";
 
@@ -117,9 +117,14 @@ export default function TrendMapPage() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [narrow, stacked]);
+  // the globe never moves when a panel opens: wide screens keep the column's space free all the time, narrower
+  // ones let the panel cover the globe's edge; the controls still keep clear of an open panel
+  const roomy = useMedia(ROOMY);
+  const rightInset = !narrow && (roomy || stacked) ? 396 : 0;
+  const globeInset = !narrow && roomy ? 396 : 0;
   const viewShift = useMemo(
-    () => (narrow ? { x: 0, y: stacked ? sheetHeight / 2 : 0 } : { x: ((stacked ? 396 : 0) - 332) / 2, y: 0 }),
-    [narrow, stacked, sheetHeight],
+    () => (narrow ? { x: 0, y: stacked ? sheetHeight / 2 : 0 } : { x: (globeInset - 332) / 2, y: 0 }),
+    [narrow, stacked, sheetHeight, globeInset],
   );
 
   return (
@@ -150,7 +155,7 @@ export default function TrendMapPage() {
           })
         }
         hoverArea={(lat, lon, zoomed) => areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" })}
-        rightInset={stacked ? 396 : 0}
+        rightInset={rightInset}
         leftInset={332}
         viewShift={viewShift}
         loading={waking ? WAKING_MESSAGE : s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
@@ -203,7 +208,7 @@ export default function TrendMapPage() {
           </div>
         </div>
       )}
-      {s.showTrend && !(narrow && stacked) && <TimelineBar rightInset={stacked ? 396 : 0} />}
+      {s.showTrend && !(narrow && stacked) && <TimelineBar rightInset={rightInset} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // variable picker, grouped into atmosphere, land and ocean
 
 import { useState } from "react";
+import { PHONE, useMedia } from "@/lib/useMedia";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import type { VariableInfo } from "@/api/types";
@@ -36,11 +37,13 @@ export default function VariableStep() {
   // suggestion. Picking a variable never collapses a group, so the list does not jump under the finger
   const [toggled, setToggled] = useState<Partial<Record<VariableInfo["group"], boolean>>>({});
   const [initialKey] = useState(variableKey);
+  // on the phone all groups start closed (three short rows) unless one holds a suggestion or the pick
+  const phone = useMedia(PHONE);
   const startsWithPick = variables.some((v) => v.key === initialKey);
   const isOpen = (group: VariableInfo["group"], items: VariableInfo[]) =>
     toggled[group] ??
     (items.some((v) => v.key === initialKey || suggested.includes(v.key)) ||
-      (!startsWithPick && !suggested.length && group === "atmosphere"));
+      (!phone && !startsWithPick && !suggested.length && group === "atmosphere"));
 
   const typePicker = (
     <label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">

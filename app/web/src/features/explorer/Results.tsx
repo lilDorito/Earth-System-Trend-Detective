@@ -55,7 +55,7 @@ export default function Results() {
   }
 
   return (
-    <p className="px-5 py-6 text-sm leading-relaxed text-muted-foreground">
+    <p className="px-5 py-6 text-sm leading-relaxed text-muted-foreground max-sm:hidden">
       No result yet. Pick a place, a variable and a question, then press Investigate.
     </p>
   );

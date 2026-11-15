@@ -231,7 +231,16 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
     };
     measure();
     void document.fonts.ready.then(measure);
-    return () => root.replaceChildren();
+    // widths taken while the page is hidden (a tab switch, the app in the background) read 0, which would let every
+    // label through the overlap check at once; measure again whenever the page shows or changes size
+    const remeasure = () => document.visibilityState === "visible" && measure();
+    document.addEventListener("visibilitychange", remeasure);
+    window.addEventListener("resize", remeasure);
+    return () => {
+      document.removeEventListener("visibilitychange", remeasure);
+      window.removeEventListener("resize", remeasure);
+      root.replaceChildren();
+    };
   }, [countries, cities, container, canvas, onPick, onClear, invalidate, markerEl]);
 
   // a picked city keeps its label on screen, and the marker takes the place of its dot
@@ -264,10 +273,18 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
     const minArea = areaThreshold(distance);
     view.copy(camera.position).normalize();
     const placed: number[][] = [];
+    let unmeasured = false;
 
     const place = (label: Label, visible: boolean, opacity: number) => {
       const facing = label.normal.dot(view);
       if (!visible || facing < MIN_FACING) return hide(label);
+      // no width yet (measured while hidden): measure now, and keep it off screen until it has one, so the overlap
+      // check never waves through labels it cannot size
+      if (!label.width) label.width = label.el.offsetWidth;
+      if (!label.width) {
+        unmeasured = true;
+        return hide(label);
+      }
       projected.copy(label.position).project(camera);
       const x = ((projected.x + 1) / 2) * size.width;
       const y = ((1 - projected.y) / 2) * size.height;
@@ -324,6 +341,11 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
       placeCities();
       placeCountries();
     }
+    // try again shortly for labels that could not be measured yet
+    if (unmeasured) {
+      laidOut.current = null;
+      window.setTimeout(invalidate, 250);
+    }
   });
 
   return null;
@@ -366,7 +388,7 @@ export default function MapOverlay({ labels, onPick, onClear, marker, onReady, s
   return (
     <>
       <Borders positions={countries.coasts} width={1} opacity={0.5} />
-      <Borders positions={countries.borders} width={1.3} opacity={0.8} />
+      <Borders positions={countries.borders} width={1.9} opacity={0.95} />
       {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} onClear={clearRef} marker={marker} snap={snap} />}
     </>
   );

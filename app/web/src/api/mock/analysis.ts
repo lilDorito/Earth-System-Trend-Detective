@@ -56,7 +56,12 @@ export function analyze(req: AnalyzeRequest): AnalyzeResponse {
 
   // a region has no geometry here; any mid-latitude place gives a plausible series
   const { lat, lon } = locationCenter(req.location) ?? { lat: 45, lon: 0 };
-  const place = req.location.type === "region" ? req.location.id : `${lat.toFixed(2)}|${lon.toFixed(2)}`;
+  const place =
+    req.location.type === "region"
+      ? req.location.id
+      : req.location.type === "regions"
+        ? [...req.location.ids].sort().join("+")
+        : `${lat.toFixed(2)}|${lon.toFixed(2)}`;
   const rng = createRandom(`${variable.key}|${place}`);
   const profile = profileFor(variable, lat);
   const start = req.start > variable.coverage_start ? req.start : variable.coverage_start;

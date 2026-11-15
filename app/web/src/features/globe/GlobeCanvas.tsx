@@ -4,16 +4,20 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
-import type { BBox } from "@/api/types";
+import { Crosshair, Flag, Layers, Square, SquareDashed, X } from "lucide-react";
+import type { BBox, Boundary } from "@/api/types";
 import { AdditiveBlending, BackSide, BufferGeometry, CanvasTexture, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import AdminBorders from "./AdminBorders";
+import AreaFill from "./AreaFill";
+import { ADMIN_ZOOM } from "./areaAt";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
 import type { Ring } from "./boundaries";
 import BoxDraw from "./BoxDraw";
 import Outline from "./Outline";
 import DetailTiles from "./DetailTiles";
+import { useOutline } from "./useOutline";
 import { latLonToVector, vectorToLatLon } from "./geo";
 
 type LatLon = { lat: number; lon: number };
@@ -34,8 +38,13 @@ type GlobeCanvasProps = {
   onPick?: PickHandler;
   onClear?: () => void;
   onBox?: (box: BBox) => void;
-  onCountry?: (lat: number, lon: number) => void; // country mode: a click picks the country under it
-  areaMode?: "country" | "sea"; // what the country button picks: countries, or seas and oceans
+  // region mode: a click picks the area under it; zoomed is true close to the surface, where the next level
+  // down (states, oblasts) is picked instead of the country or sea
+  // multi: the "Several" switch is on, a click adds or removes the area instead of replacing the selection
+  onCountry?: (lat: number, lon: number, zoomed: boolean, multi: boolean) => void;
+  multiSelect?: boolean; // offer the One / Several switch in region mode
+  // region mode: the area under the pointer, to highlight (same lookup as the click)
+  hoverArea?: (lat: number, lon: number, zoomed: boolean) => Promise<Boundary | null>;
   rightInset?: number; // px covered by a side panel on the right (wide screens); the mode switch centres in the rest
   leftInset?: number; // px covered by a panel on the left (from tablet width up)
   viewShift?: { x: number; y: number }; // px the globe's picture moves left / up to centre in the free space
@@ -276,7 +285,7 @@ function FitCamera() {
 }
 
 type EarthProps = Pick<GlobeCanvasProps, "texture" | "onPick" | "onClear"> & {
-  onHover: (point: LatLon | null) => void;
+  onHover: (point: LatLon | null, dragging?: boolean) => void;
   snap: CitySnap;
 };
 
@@ -302,7 +311,7 @@ function Earth({ texture, onPick, onClear, onHover, snap }: EarthProps) {
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onPointerOver={() => onPick && (document.body.style.cursor = "crosshair")}
-      onPointerMove={(e) => onHover(vectorToLatLon(e.point))}
+      onPointerMove={(e) => onHover(vectorToLatLon(e.point), e.nativeEvent.buttons !== 0)}
       onPointerOut={() => {
         document.body.style.cursor = "";
         onHover(null);
@@ -317,6 +326,27 @@ function Earth({ texture, onPick, onClear, onHover, snap }: EarthProps) {
         toneMapped={false}
       />
     </mesh>
+  );
+}
+
+// the camera distance, readable outside the canvas (a click needs to know how far in the view is)
+function CameraDistance({ target }: { target: { current: number } }) {
+  useFrame(({ camera }) => {
+    target.current = camera.position.length();
+  });
+  return null;
+}
+
+// the area under the pointer in region mode: a light fill and outline
+function HoverArea({ boundary }: { boundary: Boundary }) {
+  const area = useMemo(() => ({ kind: "region" as const, boundary }), [boundary]);
+  const rings = useOutline(area);
+  if (!rings || rings.length === 0) return null;
+  return (
+    <>
+      <AreaFill rings={rings} color={0xffffff} opacity={0.14} radius={1.0005} />
+      <Outline rings={rings} color={0xffffff} width={1.6} halo={false} />
+    </>
   );
 }
 
@@ -475,7 +505,8 @@ export default function GlobeCanvas({
   onClear,
   onBox,
   onCountry,
-  areaMode = "country",
+  multiSelect = false,
+  hoverArea,
   rightInset = 0,
   leftInset = 0,
   viewShift = NO_SHIFT,
@@ -492,8 +523,11 @@ export default function GlobeCanvas({
   const [mapReady, setMapReady] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
   const [tool, setTool] = useState<"point" | "box" | "country">("point");
-  // in country mode a click (also on a city label) selects the country there instead of a point
-  const pick: PickHandler | undefined = tool === "country" && onCountry ? (lat, lon) => onCountry(lat, lon) : onPick;
+  const [multi, setMulti] = useState(false);
+  const distance = useRef(Infinity);
+  // in region mode a click (also on a city label) selects the area there instead of a point
+  const pick: PickHandler | undefined =
+    tool === "country" && onCountry ? (lat, lon) => onCountry(lat, lon, distance.current < ADMIN_ZOOM, multiSelect && multi) : onPick;
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const hint = (touch && touchHint) || mouseHint;
   const hasSelection = !!marker || !!outline?.length;
@@ -505,9 +539,32 @@ export default function GlobeCanvas({
   const paneled = leftInset > 0;
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
+  const [hovered, setHovered] = useState<Boundary | null>(null);
+  const hover = useRef({ timer: 0, run: 0 });
+  const regionMode = tool === "country" && !!hoverArea;
+  useEffect(() => {
+    if (!regionMode) setHovered(null);
+  }, [regionMode]);
+  useEffect(() => () => clearTimeout(hover.current.timer), []);
+
   // written straight to the DOM so hovering does not re-render the scene
-  const onHover = (point: LatLon | null) => {
+  const onHover = (point: LatLon | null, dragging = false) => {
     if (readout.current) readout.current.textContent = point ? formatLatLon(point.lat, point.lon) : hint;
+    if (!regionMode || !hoverArea) return;
+    const h = hover.current;
+    clearTimeout(h.timer);
+    if (!point || dragging) {
+      h.run++;
+      setHovered(null);
+      return;
+    }
+    // the lookup walks outlines, so it waits for the pointer to settle a moment
+    h.timer = window.setTimeout(() => {
+      const id = ++h.run;
+      void hoverArea(point.lat, point.lon, distance.current < ADMIN_ZOOM)
+        .catch(() => null)
+        .then((area) => id === h.run && setHovered((prev) => (prev?.id === area?.id ? prev : area)));
+    }, 50);
   };
 
   return (
@@ -518,6 +575,7 @@ export default function GlobeCanvas({
         className={cn("absolute inset-0 touch-none transition-opacity duration-500", !ready && "opacity-0")}
       >
         <AdaptiveResolution />
+        <CameraDistance target={distance} />
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
@@ -525,7 +583,10 @@ export default function GlobeCanvas({
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}
+        {onCountry && <AdminBorders enabled={tool === "country"} />}
+        {outline && outline.length > 0 && <AreaFill rings={outline} color={0xfbbf24} opacity={0.16} />}
         {outline && outline.length > 0 && <Outline rings={outline} />}
+        {hovered && regionMode && <HoverArea key={hovered.id} boundary={hovered} />}
         {onBox && (
           <BoxDraw
             active={tool === "box"}
@@ -577,9 +638,7 @@ export default function GlobeCanvas({
             ["point", Crosshair, "Point", "Click to pick a point"],
             ["box", SquareDashed, "Box", "Drag on the globe to draw a box (shift-drag works in point mode too)"],
             ...(onCountry
-              ? areaMode === "sea"
-                ? ([["country", Waves, "Sea", "Click on the water to select that sea or ocean"]] as const)
-                : ([["country", Flag, "Country", "Click on the globe to select that country"]] as const)
+              ? ([["country", Flag, "Region", "Click a country, sea or ocean; zoom in to pick its states and regions"]] as const)
               : []),
           ] as const).map(([mode, Icon, label, title]) => (
             <button
@@ -600,6 +659,35 @@ export default function GlobeCanvas({
             </button>
           ))}
         </div>
+        {multiSelect && tool === "country" && (
+          <div
+            role="radiogroup"
+            aria-label="Regions to select"
+            className="flex flex-row items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:flex-col lg:flex-row"
+          >
+            {([
+              [false, Square, "One", "A click picks one region and replaces the previous one"],
+              [true, Layers, "Several", "A click adds a region to the selection, or removes it; Investigate averages them all"],
+            ] as const).map(([several, Icon, label, title]) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={multi === several}
+                onClick={() => setMulti(several)}
+                aria-label={label}
+                title={title}
+                className={cn(
+                  "flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-sm font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:h-7 lg:w-auto lg:flex-row lg:gap-1.5 lg:px-2.5 lg:text-[11px]",
+                  multi === several && "bg-accent text-foreground",
+                )}
+              >
+                <Icon className="size-4 lg:size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         {onClear && hasSelection && (
           <button
             type="button"
@@ -641,17 +729,22 @@ export default function GlobeCanvas({
             autoFocus
             className="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-4 bg-black/85 p-4 backdrop-blur-sm sm:gap-6"
           >
-            {/* Star Wars yellow in the Star Jedi face; its lower case letters are the logo's swashed forms */}
-            <motion.span
-              aria-label="Made by"
-              initial={{ opacity: 0, y: -24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -24 }}
-              transition={{ duration: 0.45, delay: 0.1, ease: "easeOut" }}
-              className="font-['Star_Jedi',ui-sans-serif,sans-serif] text-5xl leading-none tracking-wide text-[#ffe81f] [text-shadow:0_0_18px_rgb(255_232_31/0.45)] sm:text-7xl"
-            >
-              made by
-            </motion.span>
+            {/* Star Wars yellow in the Star Jedi face, tipped back into space like the opening crawl: the top edge
+                recedes, so the letters narrow upwards. The tilt sits on a wrapper, since motion owns the inner transform */}
+            <span className="block [perspective:260px]">
+              <span className="block origin-bottom [transform:rotateX(38deg)]">
+                <motion.span
+                  aria-label="Made by"
+                  initial={{ opacity: 0, y: 40 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 40 }}
+                  transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+                  className="block font-['Star_Jedi',ui-sans-serif,sans-serif] text-6xl leading-none tracking-wide text-[#ffe81f] [text-shadow:0_0_18px_rgb(255_232_31/0.45)] sm:text-8xl"
+                >
+                  made by
+                </motion.span>
+              </span>
+            </span>
             <motion.img
               src="/textures/goyz.jpg"
               alt="The team, as astronauts on the Moon"

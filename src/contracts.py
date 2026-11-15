@@ -48,7 +48,15 @@ class Region(BaseModel):
     id: str = Field(min_length=1, description="Natural Earth region id, see /api/boundaries")
 
 
-Location = Annotated[Point | BBox | Region, Field(discriminator="type")]
+MAX_REGIONS = 60
+
+
+class Regions(BaseModel):
+    type: Literal["regions"] = "regions"
+    ids: list[str] = Field(min_length=1, max_length=MAX_REGIONS, description="Natural Earth region ids, one area made of all of them")
+
+
+Location = Annotated[Point | BBox | Region | Regions, Field(discriminator="type")]
 
 
 class VariableInfo(BaseModel):

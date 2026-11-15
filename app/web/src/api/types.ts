@@ -7,7 +7,9 @@ export type Mode = "trend" | "event";
 export type Point = { type: "point"; lat: number; lon: number };
 export type BBox = { type: "bbox"; west: number; south: number; east: number; north: number };
 export type RegionLocation = { type: "region"; id: string };
-export type Location = Point | BBox | RegionLocation;
+// several regions averaged as one area
+export type RegionsLocation = { type: "regions"; ids: string[] };
+export type Location = Point | BBox | RegionLocation | RegionsLocation;
 
 // a Natural Earth country or admin-1 region (public/regions/index.json, /api/boundaries)
 export type Boundary = {

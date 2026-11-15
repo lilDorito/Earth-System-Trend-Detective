@@ -1,56 +1,51 @@
 # Architecture
 
-## Data flow
+```
+sources (NASA, NOAA, ...) --scripts/ingest--> Hugging Face dataset --FastAPI (Render)--> React app (Vercel)
+                                              grids, trends, insights   reads ranges        globe + panels
+```
 
-## The contract (`src/contracts.py`)
+## Data
 
-## Adding a data source
+`scripts/ingest/` downloads each source and puts it on one grid: monthly values, 1 degree, 2000-2025. `hf_dataset.py` writes the dataset:
 
-## Giovanni notes
+| Path | Contents |
+|---|---|
+| `grid/<var>.parquet` | monthly values per cell, one row group per latitude band, so a point read is about 0.3 MB |
+| `annual/<var>.parquet` | annual means per cell (a year needs 9 months) |
+| `trends/<var>.npz` | precomputed whole-record trend grid, significance, year maps, colour scales |
+| `insights/cells.npz`, `regions.npz` | per-cell statistics for every variable, annual series for every region |
+| `regions/` | Natural Earth countries, provinces and seas as cell weights |
+| `stations/` | NCEI monthly station data |
+| `catalog.parquet` | units, period, licence and value range per variable |
 
-## Statistics notes
+The API reads the dataset straight from the Hub with ranged reads (`src/dataset.py`), pinned to one commit (`REVISION`). `HF_DATASET_PATH=data/hf` reads a local copy instead.
 
-- Trend (`stats.analyze_trend`): OLS slope and 95% CI on deseasonalized monthly anomalies (CI is optimistic: autocorrelation). Significance and Sen's slope from Mann-Kendall with the Hamed-Rao correction; seasonal Mann-Kendall if the seasonal cycle is kept.
-- Event (`stats.analyze_event`): mean before vs after the date, Welch t-test with effective sample size n*(1-r1)/(1+r1) per side. With deseasonalized data the means are anomalies, so `pct_change` is null. Needs at least 6 months per side (HTTP 422 otherwise). Shows association with a date, not proof of cause.
+## Statistics
 
-### Global trend map (`src/gridtrends.py`, `app/api/trendmap.py`)
+- **Trend:** Sen's slope with Mann-Kendall, corrected for lag-1 autocorrelation (Hamed-Rao at a point, a simplified variance factor on the grid).
+- **Many tests at once:** Benjamini-Hochberg FDR at 5%, across cells on the map and across variables in the scanner.
+- **Areas:** each cell is weighted by the share of the area it covers × cos(lat) × the share of months with data.
+- **Trust checks** (`src/insights.py`): trend against a single jump (BIC, break year searched), start-year robustness, agreement with an independent product of the same quantity, regression on the Niño 3.4 index, and years still needed for p < 0.05.
+- **Event mode** (explorer): mean before against mean after a date, Welch t-test with an effective sample size.
 
-- Input (live): annual means per 1-degree cell from the Hugging Face dataset (`src/dataset.py`, `annual/<variable>.parquet`), any of 31 variables. Years the record does not cover in all 12 months are dropped, and a cell-year needs at least 9 months. Mock: a local `data/grid/annual.npz` or a synthetic field.
-- Grid layer: vectorized Mann-Kendall + Sen's slope per cell on the real year spacing (records with gaps stay correct), p-value with a simplified lag-1 autocorrelation variance factor, Benjamini-Hochberg FDR at 5% across cells. Only cells with every year present are tested. Fast but approximate: p differs slightly from pymannkendall's Hamed-Rao.
-- Point endpoint: `pymannkendall.hamed_rao_modification_test` on the nearest cell with data (up to 3 degrees away), Sen slope on the real years, plus the FDR flag from the grid.
-- Colour scales come from the data (`/meta`: 95th percentile of |trend|, 98th of |anomaly|, rounded to 1, 2, 2.5 or 5 x 10^n). Year frames are sent on a 2-degree grid; responses are gzipped.
-- Precomputed products (`src/trendmaps.py`, built by `hf_dataset.py trends` into `trends/<key>.npz`): the whole-record trend grid, significance, 2-degree year maps (anomalies and values), global means and colour scales, plus `trends/_wind.npz`. The map's endpoints read these when the request covers the whole record (the default), so opening a variable loads no annual grid and runs no Mann-Kendall; custom year ranges, mock data and dataset revisions without the files are computed as before. Whole-record grid and year-map responses are gzipped once and kept in memory (`_send`). Bump `trendmaps.VERSION` when the products change. Point clicks and region panels still load the annual grid (once per variable).
-- Insights (`src/insights.py`, `app/api/insights.py`, built into `insights/cells.npz` and `insights/regions.npz` by `hf_dataset.py trends`):
-  - Scanner (`/api/insights/scan`): every variable at a point, region or box, ranked by effect size (Sen slope per decade over the scatter of the detrended annual values), significant ones first, FDR across the variables. Points read one cell of `cells.npz`; regions run Mann-Kendall on precomputed region series (regions covering under half their area with a variable are skipped); boxes average the cells (approximate, the effect errs low).
-  - Trust checks (`/api/insights/diagnose`): an independent product of the same quantity over the same cells (`trendmaps.PARTNERS`; global products are compared over the land-only partner's cells), a jump-versus-trend test (BIC with the break year searched; a gain over 10 flags it, about 1% false alarms on white noise, more on persistent series), start-year robustness (Sen slope when starting 1-5 years later), years still needed for p < 0.05 (OLS standard error inflated for lag-1 autocorrelation), p for every start/end window, and ENSO (regression on the annual Nino 3.4 index from SST).
-  - Process fingerprints (`/api/insights/hotspots`, `configs/scenarios.yaml`): share of a scenario's variables with a significant trend in the expected sign per cell; cells where a jump explains a variable better than a trend are counted.
-  - Opposite trends (`/api/insights/divergence`): connected areas of significant cells of one sign (`scipy.ndimage.label`, wrapping at 180 degrees), largest 8 per sign, stored with each variable's trends file.
-  - Frontend: `features/trendmap/Insights.tsx` (panels), `Discover.tsx` (fingerprints, opposite trends), `cases.ts` (trend map demos), `lib/summary.ts` (one-sentence conclusions). The insights need the real dataset; mock mode hides them.
-- Extra variables: aerosol optical depth and total ozone (MERRA-2), NDVI (MODIS) and burned area (GFED5, to 2020) go through the same dataset path as the rest. AOD and burned area use log-scale values views (`logFloor` in `styles.ts`, so zero burned area is a colour, not a gap). `/api/trendmap/co2` serves annual NOAA GML CO2, shown beside ocean pCO2 and pH.
-- Memory (Render free plan, 512 MB): loads and grid statistics run one at a time behind a lock (`_one_at_a_time` in `app/api/trendmap.py`), so the four requests the map sends for a new variable compute it once; at most three variables stay loaded, year maps are float32, Arrow's pool is released after each read and `MALLOC_ARENA_MAX=2` is set. Measured: about 180 MB after start, 300-340 MB steady while switching variables, 400 MB peak.
-- Explorer series (`hf_grid` source): one Parquet row group per latitude band, so a point read fetches about 0.3 MB; file footers are cached per process.
-- Areas: a location is a point, a box or a region (`{"type": "region", "id": "ukr"}`, ids from `/api/boundaries`). Box and region means weight each cell by `frac * cos(lat) * valid_frac`, where `frac` is the share of the cell inside the area: computed exactly for boxes (west > east crosses 180 degrees), precomputed from Natural Earth polygons for regions (`scripts/ingest/regions.py`). The response meta carries `cells` and `coverage` (share of the area with data, low for land variables over sea and the reverse). Bands are read in parallel: a Russia-sized area takes about 2 s cold.
-- Trend map regions: presets are boxes, except Ukraine, which uses its boundary on live data; any boundary id or a box (`south, north, west, east`) works there too.
-- Overlay styles (`features/trendmap/styles.ts`): each variable has a change palette (diverging, dark middle so near-zero change fades into the globe) and a values palette (sequential, cmocean-like), plus flags: `log` (chlorophyll), `signed` (sea level, wind components), `isobars` (surface pressure: lines and H/L instead of fills), `edge` (sea ice: 15% edge of the first year against the year shown), `wind` (particles along the mean MERRA-2 10 m wind from `/api/trendmap/wind`). The Change/Values switch picks trends and anomalies or the annual means (`/frames?kind=values`, colour range from `/meta` `value_range`). Significant cells are stippled in the shader. `merra2_wind10m` is a virtual variable: the speed of the annual mean wind vector, built from u and v in `src/dataset.py`.
-- Frontend areas: region search and outlines read static files in `public/regions/` (no API call, so they work in mock mode); the mock answers a region from its bounding box. `GlobeCanvas` takes `outline` (rings) and `onBox`; shift-drag or the box tool draws a box (`BoxDraw`, which disables the orbit controls in the capture phase so the drag does not rotate the globe).
-- Frontend: `features/trendmap/` (panels, trend layer) on top of the shared `features/globe/GlobeCanvas`, Zustand store `useTrendMapStore`. In mock mode the grid comes from `src/api/mock/trendmap.ts`.
+## API (`app/api/`, FastAPI)
 
+- `trendmap.py`: map layers, year frames, point and region panels, wind.
+- `insights.py`: scanner, trust checks, fingerprints (`configs/scenarios.yaml`), opposite trends.
+- `stations.py`: station trends and station-against-grid comparison.
+- `main.py`: explorer analysis (`POST /api/analyze`), variables, boundaries.
 
-### Weather stations (`src/stations.py`, `app/api/stations.py`, `features/stations/`)
+The whole-record map reads precomputed files, so opening a variable takes about 0.2 s. Custom year ranges are computed on request. Render's free plan has 512 MB, so heavy loads run one at a time behind a lock, at most three variables stay in memory, and gzipped responses are cached.
 
-- Input (live): `stations/stations.parquet` and `stations/monthly.parquet` from the Hugging Face dataset (NCEI GSOM, built by `scripts/ingest/hf_dataset.py`). Only the columns of one element are read. Elements: `TAVG` (paired with `merra2_t2m`, `gldas_tair`), `PRCP` (`imerg_precip`, `gldas_precip`), `AWND` (`merra2_wind10m`, `gldas_wind`); units match the paired grids.
-- Per element, once per process (at most three cached, built under a lock): monthly anomalies from each station's own monthly climatology (a calendar month needs 3 values), annual means of the anomalies where a year has at least 9 months, only years the record covers in all 12 months. A station is listed with 5 or more such years; it gets a trend only with 20 or more. Trend: Sen's slope on the real years and Mann-Kendall with the same lag-1 variance factor as the grid layer, then Benjamini-Hochberg FDR at 5% across the stations of the element. About 0.3 s per element for 1,800 stations.
-- `GET /api/stations?element=TAVG`: columnar arrays (ids, names, lat, lon, slope per decade, p, FDR flag, years with data), about 30 KB gzipped.
-- `GET /api/stations/compare?id=...&element=...&variable=...`: the station's annual anomalies against the nearest grid cell of the paired variable with at least 8 years (the cell the station sits in when it has data). Both series are centred on their mean over the years they share; the grid trend uses only the years the station has, so the two slopes are comparable. Returns both trends, their difference, the correlation and the distance to the cell centre. `merra2_wind10m` is the speed of the mean wind vector, so it runs lower than the station's mean speed; anomalies and trends still compare.
-- Globe (`features/globe/StationLayer.tsx`): all stations are one `THREE.Points` with a small shader (one draw call), faded at the horizon and sized with zoom. Picking is done on screen (nearest station within 9 px of the cursor, front side only) in a custom `raycast`, so clicks on a station never reach the globe underneath; the hover tooltip is a single DOM element moved on pointer moves, no React re-render.
-- Trend map: off by default and fetched only when switched on (`showStations` in `useTrendMapStore`, lists shared in `useStationStore`). Points use the variable's change palette on the map's own trend scale, so a station and the field around it read the same; a white ring marks FDR-significant trends, grey points have under 20 years, and "Significant only" hides the rest. A click opens `StationPanel` (station against grid). Variables with no paired element disable the switch.
-- Explorer: a switch and an element picker on the globe (`StationToggle`); points are neutral, and a click picks the station as the place to analyse.
-- Mock mode: `src/api/mock/stations.ts` makes synthetic stations in the browser; the API answers 503 with `DATA_MODE=mock`.
+## Frontend (`app/web/`, React + TypeScript + Vite)
 
-### Atmospheric CO₂ (`/api/trendmap/co2`, `useCo2Store`, `Co2Panel`)
+- **Globe:** react-three-fiber. The trend field is a shader on a sphere: palette, significance stipple and land mask on the GPU. Wind particles, contours and outlines are separate layers.
+- **State:** Zustand stores per page. **Charts:** ECharts. **UI:** Tailwind and shadcn/ui.
+- **Regions:** search and outlines read static files in `public/regions/`, so they cost no API call.
+- **Layout:** panels stack on the right on wide screens and form a bottom sheet on phones, and the globe shifts to stay centred in the free space.
+- **Mock mode:** a synthetic data source in the browser with the same interface, so the UI runs without the backend.
 
-- Input (live): `series/co2.parquet` (NOAA GML monthly global marine surface mean and Mauna Loa). One response holds the annual means with their Sen slope and fitted line, the ppm added each year, and both monthly records; it is built once and served gzipped from memory like the other whole-record responses (about 8 KB).
-- CO₂ is well mixed, so it is a chart, not a globe layer. The browser fetches it once per session (`useCo2Store`) and only when something shows it.
-- Context: a small chart under the variables it drives (2 m air, skin and sea surface temperature, ocean heat content, pCO₂, pH, NDVI), each with a one-line note on the link.
-- Panel: "Atmospheric CO₂ (chart)" in the variable list opens `Co2Panel` in the selection stack without changing the map: monthly global and Mauna Loa curves, rise since 2000, ppm added per year then and now, and buttons to the linked variables. Picking a cell or a station closes it.
-- Mock mode uses a synthetic Keeling curve (`src/api/mock/co2.ts`).
+## Configuration
+
+`configs/*.yaml` holds the variables, preset regions, demos and fingerprints, with no code.

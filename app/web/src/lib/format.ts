@@ -42,13 +42,14 @@ export function formatLatLon(lat: number, lon: number): string {
 export function formatLocation(location: Location): string {
   if (location.type === "point") return formatLatLon(location.lat, location.lon);
   if (location.type === "region") return location.id;
+  if (location.type === "regions") return `${location.ids.length} regions`;
   return `${formatLatLon(location.south, location.west)} to ${formatLatLon(location.north, location.east)}`;
 }
 
-// null for a region: its centre lives in the boundary index, not in the location
+// null for regions: their centre lives in the boundary index, not in the location
 export function locationCenter(location: Location): { lat: number; lon: number } | null {
   if (location.type === "point") return { lat: location.lat, lon: location.lon };
-  if (location.type === "region") return null;
+  if (location.type === "region" || location.type === "regions") return null;
   // west > east is a box across 180 degrees
   const width = (location.east - location.west + 360) % 360;
   return { lat: (location.south + location.north) / 2, lon: ((location.west + width / 2 + 540) % 360) - 180 };

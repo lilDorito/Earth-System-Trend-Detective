@@ -8,8 +8,7 @@ import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
 import { contourSegments } from "@/features/globe/contours";
-import { countryAt } from "@/features/globe/countryAt";
-import { seaAt } from "@/features/globe/seas";
+import { areaAt } from "@/features/globe/areaAt";
 import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline } from "@/features/globe/useOutline";
@@ -147,15 +146,15 @@ export default function TrendMapPage() {
           s.clearSelection();
           void s.setRegion({ kind: "box", box });
         }}
-        areaMode={s.meta?.domain === "ocean" ? "sea" : "country"}
-        onCountry={(lat, lon) =>
-          void (s.meta?.domain === "ocean" ? seaAt(lat, lon) : countryAt(lat, lon)).then((boundary) => {
+        onCountry={(lat, lon, zoomed) =>
+          void areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" }).then((boundary) => {
             if (!boundary) return;
             // one selection at a time: a new area replaces the open point
             s.clearSelection();
             void s.setRegion({ kind: "boundary", boundary });
           })
         }
+        hoverArea={(lat, lon, zoomed) => areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" })}
         rightInset={stacked ? 396 : 0}
         leftInset={332}
         viewShift={viewShift}

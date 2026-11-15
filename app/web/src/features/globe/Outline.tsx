@@ -12,7 +12,7 @@ const RADIUS = 1.0009;
 const MAX_STEP_DEG = 0.5;
 const AMBER = 0xfbbf24;
 
-function toSegments(rings: Ring[]): Float32Array {
+export function toSegments(rings: Ring[]): Float32Array {
   const out: number[] = [];
   const push = (lon: number, lat: number) => {
     const v = latLonToVector(lat, lon, RADIUS);
@@ -36,12 +36,13 @@ function toSegments(rings: Ring[]): Float32Array {
   return new Float32Array(out);
 }
 
-export default function Outline({ rings, dashed = false, color = AMBER, width = 2, halo = true }: {
+export default function Outline({ rings, dashed = false, color = AMBER, width = 2, halo = true, opacity = 1 }: {
   rings: Ring[];
   dashed?: boolean;
   color?: number;
   width?: number;
   halo?: boolean;
+  opacity?: number; // 0 to 1, for fading the line in and out
 }) {
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
@@ -70,6 +71,12 @@ export default function Outline({ rings, dashed = false, color = AMBER, width = 
     for (const object of [under, line]) object.material.resolution.set(size.width, size.height);
     invalidate();
   }, [under, line, size, invalidate]);
+
+  useEffect(() => {
+    under.material.opacity = halo ? 0.55 * opacity : 0;
+    line.material.opacity = opacity;
+    invalidate();
+  }, [under, line, opacity, halo, invalidate]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
   useEffect(

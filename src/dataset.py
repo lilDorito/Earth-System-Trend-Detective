@@ -274,6 +274,29 @@ def region_series(key: str, rid: str) -> Area:
     return _area(key, region_cells(rid), f"in {region(rid)['name']}")
 
 
+def regions_cells(ids: list[str]) -> pd.DataFrame:
+    # several regions as one area: each cell counts by the share of it inside any of them
+    ids = list(dict.fromkeys(ids))
+    chosen = pd.DataFrame([region(rid) for rid in ids])
+    countries = set(chosen.loc[chosen["kind"] == "country", "id"])
+    nested = chosen[(chosen["kind"] == "admin1") & chosen["country"].isin(countries)]
+    if not nested.empty:
+        raise ValueError(f"{nested.iloc[0]['name']} lies inside a selected country; pick the country or its regions, not both")
+    cells = _region_weights().loc[ids].reset_index(drop=True).groupby(["lat", "lon"], as_index=False)["frac"].sum()
+    # neighbours share cells along their borders, and their shares add up to at most the whole cell
+    cells["frac"] = cells["frac"].clip(upper=1.0)
+    return cells
+
+
+def regions_label(ids: list[str], shown: int = 3) -> str:
+    names = [region(rid)["name"] for rid in dict.fromkeys(ids)]
+    return ", ".join(names) if len(names) <= shown else f"{', '.join(names[:shown])} and {len(names) - shown} more"
+
+
+def regions_series(key: str, ids: list[str]) -> Area:
+    return _area(key, regions_cells(ids), "in the selected regions")
+
+
 def _monthly(key: str, rows: pd.DataFrame) -> pd.DataFrame:
     factor = variable(key)["factor"]
     df = pd.DataFrame(

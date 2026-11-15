@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .config import ROOT
@@ -96,7 +97,7 @@ class Annual:
     values: np.ndarray  # (n, 180, 360) float32, NaN where a cell has no data or too few months
 
 
-@lru_cache(maxsize=6)
+@lru_cache(maxsize=3)
 def annual(key: str) -> Annual:
     meta = variable(key)
     if key in VIRTUAL:
@@ -115,7 +116,14 @@ def annual(key: str) -> Annual:
     lon = np.rint(table["lon"].to_numpy()[keep] + 179.5).astype(int)
     values = np.full((len(complete), len(LAT), len(LON)), np.nan, dtype=np.float32)
     values[i, lat, lon] = table["value"].to_numpy()[keep] * meta["factor"]
+    del table
+    _release()
     return Annual(complete, values)
+
+
+def _release() -> None:
+    # Arrow keeps freed buffers in its pool; on a 512 MB instance they are worth handing back
+    pa.default_memory_pool().release_unused()
 
 
 @lru_cache(maxsize=32)
@@ -220,6 +228,7 @@ def _area(key: str, cells: pd.DataFrame, where: str) -> Area:
     sums = pd.DataFrame({"date": rows["date"], "value": rows["value"] * weight, "weight": weight}).groupby("date").sum()
     mean = (sums["value"] / sums["weight"]).rename("value").reset_index()
     covered = rows.drop_duplicates(["lat", "lon"])
+    _release()
     return Area(_monthly(key, mean), len(covered), float(covered["area"].sum() / cells["area"].sum()))
 
 

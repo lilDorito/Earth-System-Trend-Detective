@@ -173,7 +173,20 @@ export default function ControlPanel() {
         <>
           {(s.error || s.meta?.demo) && (
             <PanelSection>
-              {s.error ? <Alert>Could not load the trend map: {s.error}</Alert> : <Status tone="warning">synthetic field</Status>}
+              {s.error ? (
+                <Alert>
+                  Could not load the trend map. {s.error}
+                  <button
+                    type="button"
+                    onClick={() => void s.setVariable(s.variable)}
+                    className="mt-2 block cursor-pointer font-mono text-[11px] uppercase tracking-[0.06em] underline-offset-2 hover:underline"
+                  >
+                    Retry
+                  </button>
+                </Alert>
+              ) : (
+                <Status tone="warning">synthetic field</Status>
+              )}
             </PanelSection>
           )}
 

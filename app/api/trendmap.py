@@ -1,7 +1,8 @@
 # global trend map endpoints, each takes a variable and an optional year range (default: the whole record)
 
+import threading
 import warnings
-from functools import lru_cache
+from functools import lru_cache, wraps
 
 import numpy as np
 import pandas as pd
@@ -65,7 +66,23 @@ def _summary(years: np.ndarray, values: np.ndarray) -> dict:
     return dict(trend=res.trend, p=float(res.p), h=bool(res.h), slope=slope, fitted=fitted, corrected=corrected)
 
 
-@lru_cache(maxsize=6)
+_heavy = threading.RLock()
+
+
+# loads and grid statistics run one at a time: the free Render instance has 512 MB, and the four
+# requests the map sends for a new variable would otherwise each compute it at once
+def _one_at_a_time(fn):
+    @wraps(fn)
+    def wrapper(*args):
+        with _heavy:
+            return fn(*args)
+
+    wrapper.cache_clear = fn.cache_clear
+    return wrapper
+
+
+@_one_at_a_time
+@lru_cache(maxsize=3)
 def _ds(variable: str) -> gridtrends.GridDataset:
     try:
         return gridtrends.load_grid(variable)
@@ -93,6 +110,7 @@ def _slice(variable: str, start: int, end: int) -> np.ndarray:
     return (years >= start) & (years <= end)
 
 
+@_one_at_a_time
 @lru_cache(maxsize=16)
 def _grid(variable: str, start: int, end: int):
     ds = _ds(variable)
@@ -101,12 +119,13 @@ def _grid(variable: str, start: int, end: int):
     return slope, significant
 
 
-@lru_cache(maxsize=4)
+@_one_at_a_time
+@lru_cache(maxsize=2)
 def _frames(variable: str, start: int, end: int):
     ds = _ds(variable)
-    data = ds.values[_slice(variable, start, end)].astype(np.float64)
+    data = ds.values[_slice(variable, start, end)]
     n_base = min(BASELINE_YEARS, max(1, data.shape[0] // 2))
-    anomaly = data - _nanmean(data[:n_base], axis=0)
+    anomaly = (data - _nanmean(data[:n_base], axis=0)).astype(np.float32)
     return anomaly, gridtrends.global_mean_series(anomaly, ds.lat), n_base
 
 
@@ -195,7 +214,7 @@ def frames(
     anomaly, mean, n_base = _frames(variable, start, end)
     ds = _ds(variable)
     if kind == "values":
-        data = ds.values[_slice(variable, start, end)].astype(np.float64)
+        data = ds.values[_slice(variable, start, end)]
         mean = gridtrends.global_mean_series(data, ds.lat)
     else:
         data = anomaly
@@ -218,6 +237,7 @@ def frames(
     }
 
 
+@_one_at_a_time
 @lru_cache(maxsize=2)
 def _wind(start: int, end: int):
     u, v = (_ds(key) for key in ("merra2_u10m", "merra2_v10m"))

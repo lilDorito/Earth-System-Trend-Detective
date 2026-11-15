@@ -32,10 +32,16 @@ export class ApiError extends Error {
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch {
+    // no response at all: the server is asleep, restarting or unreachable (the browser says only "Failed to fetch")
+    throw new ApiError(0, "No answer from the server. It may be waking up or restarting; try again in a minute.");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, typeof body.detail === "string" ? body.detail : res.statusText);

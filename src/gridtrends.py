@@ -11,7 +11,7 @@ from .config import ROOT, settings
 
 ALPHA = 0.05
 GRID_FILE = ROOT / "data" / "grid" / "annual.npz"
-CHUNK_CELLS = 20_000  # cells per block, keeps the pairwise-slope stack small
+CHUNK_CELLS = 5_000  # cells per block: the pairwise-slope stack is about 25 MB at 26 years
 DEMO_KEY = "merra2_t2m"
 
 

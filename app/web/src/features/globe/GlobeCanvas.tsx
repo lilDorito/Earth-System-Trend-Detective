@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
-import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, Quaternion, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
@@ -76,6 +76,33 @@ function Atmosphere() {
       <sphereGeometry args={[1, 64, 32]} />
       <shaderMaterial args={[atmosphereShader]} side={BackSide} blending={AdditiveBlending} transparent depthWrite={false} />
     </mesh>
+  );
+}
+
+// easter egg: one star in the sky is the team picture, a few pixels across. It sits at a fixed spot in space, below
+// and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as the globe turns
+const SECRET_STAR_AT: [number, number, number] = [16.2, -50.6, -78.8];
+
+function SecretStar() {
+  const invalidate = useThree((s) => s.invalidate);
+  const [texture, setTexture] = useState<Texture | null>(null);
+  useEffect(() => {
+    let active = true;
+    new TextureLoader().load("/textures/star-goyz.png", (loaded) => {
+      if (!active) return loaded.dispose();
+      loaded.colorSpace = SRGBColorSpace;
+      setTexture(loaded);
+      invalidate();
+    });
+    return () => {
+      active = false;
+    };
+  }, [invalidate]);
+  if (!texture) return null;
+  return (
+    <sprite position={SECRET_STAR_AT} scale={0.9} raycast={() => null}>
+      <spriteMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
+    </sprite>
   );
 }
 
@@ -378,6 +405,7 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
+        <SecretStar />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}

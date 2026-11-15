@@ -36,6 +36,8 @@ export type VariableInfo = {
   units: string;
   conversion: string;
   resolution: Resolution;
+  group: "atmosphere" | "land" | "ocean"; // heading in the explorer's list
+  typical_range: [number, number] | null; // 2nd-98th percentile in display units; shapes mock data
   coverage_start: string;
   coverage_end: string | null;
   land_only: boolean;

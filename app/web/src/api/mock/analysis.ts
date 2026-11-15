@@ -2,15 +2,23 @@
 
 import { formatDate, formatNumber, formatSigned, locationCenter } from "@/lib/format";
 import { createRandom } from "@/lib/random";
-import type { AnalyzeRequest, AnalyzeResponse, EventResult, SeriesPoint, TrendResult } from "../types";
+import type { AnalyzeRequest, AnalyzeResponse, EventResult, SeriesPoint, TrendResult, VariableInfo } from "../types";
 import { variables } from "./catalog";
 import { linearFit, mean, round, twoSidedP, variance } from "./stats";
 
 type Profile = { base: number; amplitude: number; trend: number; noise: number; eventShift: number; floor?: number };
 
-function profileFor(key: string, lat: number): Profile {
+// a plausible profile inside the variable's usual 2nd-98th percentile range
+function fromRange(typical: VariableInfo["typical_range"]): Profile {
+  if (!typical) return { base: 10, amplitude: 3, trend: 0.2, noise: 1, eventShift: 0 };
+  const [lo, hi] = typical;
+  const span = hi - lo || Math.abs(hi) || 1;
+  return { base: (lo + hi) / 2, amplitude: 0.12 * span, trend: 0.04 * span, noise: 0.04 * span, eventShift: 0 };
+}
+
+function profileFor(variable: VariableInfo, lat: number): Profile {
   const coslat = Math.cos((lat * Math.PI) / 180);
-  switch (key) {
+  switch (variable.key) {
     case "air_temperature":
       return { base: 30 * coslat - 13, amplitude: 3 + 12 * (1 - coslat), trend: 0.35, noise: 1.1, eventShift: 0 };
     case "soil_moisture":
@@ -24,7 +32,7 @@ function profileFor(key: string, lat: number): Profile {
     case "sea_level":
       return { base: 0, amplitude: 40, trend: 35, noise: 25, eventShift: 0 };
     default:
-      return { base: 10, amplitude: 3, trend: 0.2, noise: 1, eventShift: 0 };
+      return fromRange(variable.typical_range);
   }
 }
 
@@ -50,7 +58,7 @@ export function analyze(req: AnalyzeRequest): AnalyzeResponse {
   const { lat, lon } = locationCenter(req.location) ?? { lat: 45, lon: 0 };
   const place = req.location.type === "region" ? req.location.id : `${lat.toFixed(2)}|${lon.toFixed(2)}`;
   const rng = createRandom(`${variable.key}|${place}`);
-  const profile = profileFor(variable.key, lat);
+  const profile = profileFor(variable, lat);
   const start = req.start > variable.coverage_start ? req.start : variable.coverage_start;
   const months = monthRange(start, req.end);
   if (months.length < 24) throw new Error(`Pick a period of at least two years. ${variable.name} starts in ${formatDate(variable.coverage_start)}.`);

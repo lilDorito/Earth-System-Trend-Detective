@@ -28,7 +28,7 @@ class MockSource:
         place = location.id if isinstance(location, Region) else f"{lat:.2f}|{lon:.2f}"
         seed = int(hashlib.sha1(f"{variable.key}|{place}".encode()).hexdigest()[:8], 16)
         rng = np.random.default_rng(seed)
-        base, amp, trend, noise = PROFILES.get(variable.key, DEFAULT_PROFILE)
+        base, amp, trend, noise = PROFILES.get(variable.key) or _from_range(variable.typical_range)
 
         start = max(start, variable.coverage_start)
         time = pd.date_range(start, end, freq="MS", tz="UTC")
@@ -55,6 +55,15 @@ class MockSource:
             fetched_at=datetime.now(timezone.utc),
         )
         return Series(df=df, meta=meta)
+
+
+def _from_range(typical: tuple[float, float] | None) -> tuple[float, float, float, float]:
+    # a plausible profile inside the variable's usual 2nd-98th percentile range
+    if typical is None:
+        return DEFAULT_PROFILE
+    lo, hi = typical
+    span = (hi - lo) or abs(hi) or 1.0
+    return (lo + hi) / 2, 0.12 * span, 0.04 * span, 0.04 * span
 
 
 def _center(location: Location) -> tuple[float, float]:

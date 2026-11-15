@@ -61,6 +61,8 @@ class VariableInfo(BaseModel):
     units: str
     conversion: str = "identity"
     resolution: Resolution
+    group: Literal["atmosphere", "land", "ocean"] = "atmosphere"  # heading in the explorer's list
+    typical_range: tuple[float, float] | None = None  # 2nd-98th percentile in display units; shapes mock data
     coverage_start: date
     coverage_end: date | None = None
     land_only: bool = False

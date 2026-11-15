@@ -23,9 +23,47 @@ function blur(src: Float32Array, nlat: number, nlon: number) {
   return out;
 }
 
+function fillHoles(values: Float32Array, weight: Float32Array, nlat: number, nlon: number) {
+  let filled = Uint8Array.from(weight, (w) => (w > 1e-6 ? 1 : 0));
+  for (let pass = 0; pass < 12; pass++) {
+    const next = Uint8Array.from(filled);
+    let changed = false;
+    for (let i = 0; i < nlat; i++) {
+      for (let j = 0; j < nlon; j++) {
+        const k = i * nlon + j;
+        if (filled[k]) continue;
+        let sum = 0;
+        let count = 0;
+        for (let di = -1; di <= 1; di++) {
+          const r = i + di;
+          if (r < 0 || r >= nlat) continue;
+          for (let dj = -1; dj <= 1; dj++) {
+            const n = r * nlon + ((j + dj + nlon) % nlon);
+            if (!filled[n]) continue;
+            sum += values[n];
+            count++;
+          }
+        }
+        if (!count) continue;
+        values[k] = sum / count;
+        next[k] = 1;
+        changed = true;
+      }
+    }
+    filled = next;
+    if (!changed) break;
+  }
+}
+
 // light blur that ignores cells without data (wraps in longitude), then each polar row is pulled toward
 // its mean so the poles meet in one value
-export function smoothField(values: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry): Smoothed {
+export function smoothField(
+  values: ArrayLike<number | null>,
+  nlat: number,
+  nlon: number,
+  grid: GridGeometry,
+  extend = false,
+): Smoothed {
   const coverage = Float32Array.from(values as ArrayLike<number | null>, (v) => (v == null ? 0 : 1));
   let weighted = Float32Array.from(values as ArrayLike<number | null>, (v) => v ?? 0);
   let weight = coverage;
@@ -34,6 +72,9 @@ export function smoothField(values: ArrayLike<number | null>, nlat: number, nlon
     weight = blur(weight, nlat, nlon);
   }
   const smooth = weighted.map((v, k) => (weight[k] > 1e-6 ? v / weight[k] : 0));
+  // ocean or land fields are cut by the real coastline in the shader, so the values have to reach
+  // past the coarse cells: empty cells take the mean of their filled neighbours, ring by ring
+  if (extend) fillHoles(smooth, weight, nlat, nlon);
   // poleward from 60 degrees in each hemisphere; a row without data (a satellite pole hole) takes the
   // mean of the last row with data, so values cannot fan out by longitude around the pole
   const rows = Array.from({ length: nlat }, (_, i) => i);

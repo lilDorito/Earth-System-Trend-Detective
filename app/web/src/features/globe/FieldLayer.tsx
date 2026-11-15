@@ -1,10 +1,11 @@
 // gridded field drawn over a muted Earth: color bands and anti-aliased contour lines
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector2, Vector3, Vector4, type DataTexture, type Mesh, type Texture } from "three";
 import type { GridGeometry } from "@/api/types";
 import { BANDS, type Rgb } from "@/features/trendmap/styles";
+import { loadLandMask } from "./landMask";
 import { createFieldTexture, fieldGrid, smoothField, updateFieldTexture, type FieldGrid } from "./field";
 
 const vertexShader = `
@@ -16,6 +17,8 @@ const vertexShader = `
 
 const fragmentShader = (bands: number) => `
   uniform sampler2D earth;
+  uniform sampler2D landMask;
+  uniform float domain; // 0 global, 1 ocean only, 2 land only
   uniform sampler2D fieldFrom;
   uniform sampler2D fieldTo;
   uniform vec2 sizeFrom;
@@ -106,7 +109,9 @@ const fragmentShader = (bands: number) => `
     dx.x = (dx.x - floor(dx.x + 0.5)) * squeeze;
     dy.x = (dy.x - floor(dy.x + 0.5)) * squeeze;
     vec3 rgb = toSrgb(textureGrad(earth, uv, dx, dy).rgb);
-    float grey = clamp((dot(rgb, vec3(0.2126, 0.7152, 0.0722)) * 0.9 - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+    float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+    // lifted darks: forests and deep sea no longer crush to black, so land without data still reads as land
+    float grey = clamp(pow(lum, 0.6) * 0.85 + 0.08, 0.0, 1.0);
     vec3 ground = vec3(grey);
     float dots = stippleDots(lonLat);
     // all meridians meet at a pole, so any band line crossing a nearly flat polar field becomes a spoke
@@ -114,6 +119,13 @@ const fragmentShader = (bands: number) => `
 
     vec4 from = sampleField(fieldFrom, sizeFrom, placeFrom, lonLat);
     vec4 to = sampleField(fieldTo, sizeTo, placeTo, lonLat);
+    // ocean or land variables follow the real coastline, not the edge of their coarse cells
+    if (domain > 0.5) {
+      float land = textureGrad(landMask, uv, dx, dy).r;
+      float cover = domain < 1.5 ? 1.0 - land : land;
+      from.b = cover;
+      to.b = cover;
+    }
 
     // same quantity and scale: the values morph, so contours move; otherwise the two pictures fade
     vec3 color = crossfade
@@ -136,6 +148,7 @@ export type FieldLook = {
 type FieldLayerProps = {
   earth: Texture;
   values: ArrayLike<number | null>; // null where a cell has no data
+  domain?: "global" | "land" | "ocean";
   mask?: ArrayLike<number> | null;
   sig?: ArrayLike<number> | null;
   nlat: number;
@@ -182,6 +195,7 @@ const place = (target: Vector4, field: FieldGrid) => target.set(field.origin[0],
 export default function FieldLayer({
   earth,
   values,
+  domain = "global",
   mask = null,
   sig = null,
   nlat,
@@ -198,9 +212,13 @@ export default function FieldLayer({
   const warmedUp = useRef(false);
   const presence = useRef({ value: 0, started: false });
   const frames = useRef<Frames | null>(null);
+  const [landMask, setLandMask] = useState<Texture | null>(null);
+  useEffect(() => {
+    void loadLandMask().then(setLandMask);
+  }, []);
   const field = useMemo(
-    () => fieldGrid(smoothField(values, nlat, nlon, grid), mask, sig, nlat, nlon, grid),
-    [values, mask, sig, nlat, nlon, grid],
+    () => fieldGrid(smoothField(values, nlat, nlon, grid, domain !== "global"), mask, sig, nlat, nlon, grid),
+    [values, mask, sig, nlat, nlon, grid, domain],
   );
 
   useEffect(() => {
@@ -253,6 +271,8 @@ export default function FieldLayer({
       fragmentShader: fragmentShader(BANDS),
       uniforms: {
         earth: { value: null as Texture | null },
+        landMask: { value: null as Texture | null },
+        domain: { value: 0 },
         fieldFrom: { value: null as Texture | null },
         fieldTo: { value: null as Texture | null },
         sizeFrom: { value: new Vector2() },
@@ -299,6 +319,9 @@ export default function FieldLayer({
     warmedUp.current = true;
     const u = material.uniforms;
     u.earth.value = earth;
+    u.landMask.value = landMask;
+    // until the mask has loaded, fall back to the data coverage
+    u.domain.value = landMask ? (domain === "ocean" ? 1 : domain === "land" ? 2 : 0) : 0;
     u.fieldFrom.value = f.from.texture;
     u.fieldTo.value = f.to.texture;
     u.sizeFrom.value.set(f.from.field.width, f.from.field.height);

@@ -69,7 +69,7 @@ export default function TrendMapPage() {
         onBox={(box) => void s.setRegion({ kind: "box", box })}
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
-        {layer && texture && <FieldLayer earth={texture} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
+        {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
         {style.wind && s.wind && (
           <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={s.showTrend} />
         )}

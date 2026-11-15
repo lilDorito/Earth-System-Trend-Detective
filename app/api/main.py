@@ -13,6 +13,7 @@ from src.sources.base import SourceError
 
 from .schemas import AnalyzeRequest, AnalyzeResponse, SeriesPoint
 from .stations import router as stations_router
+from .insights import router as insights_router
 from .trendmap import router as trendmap_router
 
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")]
@@ -25,9 +26,11 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+# level 6: five times faster than the default 9 for 4% more bytes, which matters on a small CPU
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 app.include_router(trendmap_router)
 app.include_router(stations_router)
+app.include_router(insights_router)
 
 
 @app.get("/api/health")

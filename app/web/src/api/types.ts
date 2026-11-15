@@ -319,3 +319,89 @@ export type StationCompare = {
     difference_decade?: number;
   } | null;
 };
+
+// --- insights (app/api/insights.py) ---
+
+// a point, a Natural Earth region id or a box
+export type InsightPlace =
+  | { lat: number; lon: number }
+  | { region: string }
+  | { south: number; north: number; west: number; east: number };
+
+export type ScanRow = {
+  key: string;
+  name: string;
+  units: string;
+  group: TrendVariable["group"];
+  slope_decade: number;
+  p: number | null;
+  q: number | null; // FDR across the variables scanned
+  significant: boolean;
+  sigma: number | null;
+  effect: number | null; // change per decade in units of the year-to-year scatter
+  jump: boolean;
+  share_significant?: number; // boxes: share of cells with a significant trend
+};
+
+export type Scan = { kind: "point" | "region" | "box"; approximate: boolean; variables: ScanRow[] };
+
+export type Diagnosis = {
+  key: string;
+  name: string;
+  units: string;
+  kind: "point" | "region" | "box";
+  years: number[];
+  values: (number | null)[];
+  slope_decade: number;
+  p: number;
+  significant: boolean;
+  sigma: number | null;
+  effect: number | null;
+  step: { year: number; p: number; shift: number; detected: boolean };
+  jump: { year: number; shift: number; bic_gain: number; likely: boolean };
+  robust: { stable: boolean; shifted: { start: number; slope: number; p: number }[] };
+  growth: { end: number; p: number }[];
+  years_needed: number | null;
+  windows: { p: (number | null)[][]; slope: (number | null)[][] }; // [start][end]
+  agreement: {
+    key: string;
+    name: string;
+    slope_decade: number;
+    own_slope_decade: number;
+    ratio: number | null;
+    agree: boolean;
+  } | null;
+  enso?: { trend: number; trend_without_enso: number; per_degree: number; explained: number } | null;
+};
+
+export type Scenario = {
+  id: string;
+  name: string;
+  story: string;
+  variables: { key: string; name: string; units: string; sign: 1 | -1 }[];
+};
+
+export type Hotspots = GridGeometry & {
+  id: string;
+  name: string;
+  n_vars: number;
+  n_lat: number;
+  n_lon: number;
+  domain: TrendVariable["domain"];
+  score: (number | null)[]; // share of the scenario's variables matching, null where any has no data
+  full: number[]; // 1 where all match
+  full_area_km2: number;
+  full_with_jump_km2: number;
+};
+
+export type TrendArea = { id: number; sign: 1 | -1; area_km2: number; slope_decade: number; lat: number; lon: number };
+
+export type Divergence = GridGeometry & {
+  key: string;
+  name: string;
+  units: string;
+  n_lat: number;
+  n_lon: number;
+  areas: TrendArea[];
+  labels: number[]; // area id per cell, 0 outside
+};

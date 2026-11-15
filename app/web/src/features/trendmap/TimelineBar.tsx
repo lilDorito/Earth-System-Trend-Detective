@@ -1,5 +1,6 @@
 // timeline under the globe: drag the slider or press play to see the map year by year
 
+import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -12,7 +13,8 @@ import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 const STEP_MS = 1600;
 
-export default function TimelineBar() {
+// rightInset: px taken by the selection column on wide screens, so the bar centres in what is left
+export default function TimelineBar({ rightInset = 0 }: { rightInset?: number }) {
   const s = useTrendMapStore(
     useShallow((s) => ({
       frames: s.frames,
@@ -45,7 +47,10 @@ export default function TimelineBar() {
   const peak = Math.max(0.1, ...frames.global_mean.map((v) => Math.abs(v ?? 0)));
 
   return (
-    <Panel className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[640px] px-4 py-3 sm:left-[332px] sm:right-4">
+    <Panel
+      style={{ "--right": `${rightInset + 16}px` } as CSSProperties}
+      className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[640px] px-4 py-3 sm:left-[332px] sm:right-4 lg:right-[var(--right)]"
+    >
       <div className="flex items-start gap-3">
         <Button
           variant="outline"

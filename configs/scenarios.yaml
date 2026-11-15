@@ -1,0 +1,20 @@
+# process fingerprints for the trend map: cells where every listed variable has a significant trend (FDR 5%)
+# in the expected direction (+1 rising, -1 falling); variables must be dataset keys
+
+scenarios:
+  drying:
+    name: Drying out
+    story: Less rain, drier soil, warmer air and a thirstier atmosphere at the same time.
+    variables: { imerg_precip: -1, gldas_soilmoist_0_10: -1, gldas_tair: 1, gldas_potevap: 1 }
+  wetting:
+    name: Getting wetter
+    story: More rain falling and more water held in the soil.
+    variables: { imerg_precip: 1, gldas_soilmoist_0_10: 1, gldas_rootmoist: 1 }
+  snow_loss:
+    name: Warming with snow loss
+    story: Warmer air while snow cover thins, the signature of high-latitude and mountain warming.
+    variables: { gldas_tair: 1, gldas_swe: -1, gldas_snowdepth: -1 }
+  ocean_stress:
+    name: Ocean warming and acidification
+    story: Warmer surface water, more heat stored below and lower pH, together.
+    variables: { sst: 1, ohc_0_700: 1, ph: -1 }

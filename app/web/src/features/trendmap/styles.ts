@@ -53,6 +53,9 @@ const VALUES = {
   pressure: [[60, 40, 110], [110, 90, 170], [170, 160, 210], [230, 225, 230], [250, 205, 150], [235, 150, 60], [170, 80, 10]],
 } satisfies Record<string, Stops>;
 
+// process fingerprints: share of a scenario's variables that match, from none (dark) to all (hot)
+export const FINGERPRINT: Stops = [[30, 30, 40], [70, 40, 90], [130, 50, 120], [200, 70, 110], [245, 120, 80], [255, 200, 90], [255, 245, 190]];
+
 export type VariableStyle = {
   change: Stops;
   values: Stops;

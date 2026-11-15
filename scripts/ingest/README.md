@@ -133,11 +133,12 @@ Converts the outputs above into the dataset the app reads, in `data/hf/` (about 
 python scripts/ingest/hf_dataset.py build                # all grids, stations, catalog and dataset card
 python scripts/ingest/hf_dataset.py build sst merra2_t2m  # rebuild a few variables, the catalog keeps the rest
 python scripts/ingest/hf_dataset.py verify               # compare every grid with its source
+python scripts/ingest/hf_dataset.py trends               # trend map products only
 python scripts/ingest/regions.py                         # region cell weights (Natural Earth)
 hf upload lilDorito/earth-trend-data data/hf . --repo-type dataset
 ```
 
-It reads the NASA CSVs from `data/nasa_grid/processed/` or `data/nasa_grid/`, the ocean NetCDFs from `data/ocean/processed/` and the station files from `data/ncei/processed/`. Grids become `grid/<variable>.parquet` (one schema for all: `date, lat, lon, value, valid_frac`, sorted by cell, one row group per latitude band, so reading one point costs about 0.3 MB) and `annual/<variable>.parquet` (annual means per cell for trend maps). `catalog.parquet` holds units, period, coverage, licence and a robust value range (`p02`, `p98`) per variable. The dataset repo is set by `HF_DATASET`.
+`build` also writes `trends/<variable>.npz` (whole-record trend grid, year maps and colour scales, read by the API instead of computing them; about 55 MB in total); `trends` rebuilds only those, e.g. after changing `src/trendmaps.py`, and then the cross-variable `insights/cells.npz` and `insights/regions.npz` (scanner, trust checks, ENSO; about 20 MB, needs the region weights). It reads the NASA CSVs from `data/nasa_grid/processed/` or `data/nasa_grid/`, the ocean NetCDFs from `data/ocean/processed/` and the station files from `data/ncei/processed/`. Grids become `grid/<variable>.parquet` (one schema for all: `date, lat, lon, value, valid_frac`, sorted by cell, one row group per latitude band, so reading one point costs about 0.3 MB) and `annual/<variable>.parquet` (annual means per cell for trend maps). `catalog.parquet` holds units, period, coverage, licence and a robust value range (`p02`, `p98`) per variable. The dataset repo is set by `HF_DATASET`.
 
 ## Region weights (`regions.py`)
 

@@ -104,7 +104,8 @@ def outline(geom) -> list[list[float]]:
 # search index and one outline file per country, read by the frontend without the API
 def write_web(frame: pd.DataFrame, shapes: dict[str, object]) -> None:
     (WEB / "outlines").mkdir(parents=True, exist_ok=True)
-    columns = ["id", "name", "kind", "country", "type", "lat", "lon", "south", "north", "west", "east", "area_km2"]
+    # name_uk: Ukrainian name, so the search also finds "Україна" or "Київська область"
+    columns = ["id", "name", "kind", "country", "type", "lat", "lon", "south", "north", "west", "east", "area_km2", "name_uk"]
     rows = frame[columns].assign(kind=frame["kind"].map({"country": "c", "admin1": "a"}))
     rows[["lat", "lon", "south", "north", "west", "east"]] = rows[["lat", "lon", "south", "north", "west", "east"]].round(3)
     index = {"columns": columns, "rows": rows.values.tolist()}
@@ -128,7 +129,7 @@ def build() -> None:
         code = p["ADM0_A3"]
         names[code] = p["NAME"]
         row = dict(name=p["NAME"], kind="country", country=code.lower(), country_name=p["NAME"],
-                   type=p["TYPE"], lat=p["LABEL_Y"], lon=p["LABEL_X"])
+                   type=p["TYPE"], lat=p["LABEL_Y"], lon=p["LABEL_X"], name_uk=p.get("NAME_UK") or "")
         shapes[code.lower()] = shape(feature["geometry"])
         meta, cells = build_region(code.lower(), shapes[code.lower()], row)
         index.append(meta)
@@ -143,7 +144,7 @@ def build() -> None:
         if not name:
             continue  # a few unnamed slivers with placeholder codes
         row = dict(name=name, kind="admin1", country=code.lower(), country_name=names.get(code, p["admin"]),
-                   type=p["type_en"] or "", lat=p["latitude"], lon=p["longitude"])
+                   type=p["type_en"] or "", lat=p["latitude"], lon=p["longitude"], name_uk=p.get("name_uk") or "")
         # ids carry the country they are listed under: UKR-283, not RUS-283, for Crimea
         rid = p["adm1_code"].lower()
         if code != p["adm0_a3"]:
@@ -158,8 +159,8 @@ def build() -> None:
     out = OUT / "regions"
     out.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(index)[["id", "name", "kind", "country", "country_name", "type", "lat", "lon",
-                                 "south", "north", "west", "east", "cells", "area_km2"]]
-    frame.to_parquet(out / "index.parquet", index=False, compression="zstd")
+                                 "south", "north", "west", "east", "cells", "area_km2", "name_uk"]]
+    frame.drop(columns="name_uk").to_parquet(out / "index.parquet", index=False, compression="zstd")
     table = pa.table(
         {
             "id": pa.array([w[0] for w in weights]),

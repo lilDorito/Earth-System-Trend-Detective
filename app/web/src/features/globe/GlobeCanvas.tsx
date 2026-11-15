@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
-import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
@@ -36,7 +36,9 @@ type GlobeCanvasProps = {
   onBox?: (box: BBox) => void;
   onCountry?: (lat: number, lon: number) => void; // country mode: a click picks the country under it
   areaMode?: "country" | "sea"; // what the country button picks: countries, or seas and oceans
-  rightInset?: number; // px covered by a side panel on the right; the mode switch centres in the rest
+  rightInset?: number; // px covered by a side panel on the right (wide screens); the mode switch centres in the rest
+  leftInset?: number; // px covered by a panel on the left (from tablet width up)
+  viewShift?: { x: number; y: number }; // px the globe's picture moves left / up to centre in the free space
   outline?: Ring[] | null;
   hint?: string;
   touchHint?: string; // shown instead of hint on touch screens
@@ -46,6 +48,7 @@ type GlobeCanvasProps = {
 };
 
 const DRAG_THRESHOLD_PX = 4;
+const NO_SHIFT = { x: 0, y: 0 };
 const FOV = 45;
 
 const atmosphereShader = {
@@ -87,6 +90,29 @@ function ZoomFeel({ touch }: { touch: boolean }) {
     const altitude = camera.position.length() - 1;
     controls.rotateSpeed = touch ? TRACK_FINGER * altitude : Math.min(0.5, 0.06 + altitude * 0.25);
     controls.zoomSpeed = Math.min(1, 0.35 + altitude * 0.35);
+  });
+  return null;
+}
+
+// moves the rendered picture left by x and up by y px, so the globe centres in the space side panels and sheets leave;
+// picking, labels and box drawing all go through the same camera, so they stay aligned
+function ViewShift({ x, y }: { x: number; y: number }) {
+  const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  const size = useThree((s) => s.size);
+  const invalidate = useThree((s) => s.invalidate);
+  const current = useRef({ x: 0, y: 0 });
+
+  useEffect(() => invalidate(), [x, y, size, invalidate]);
+
+  useFrame((_, delta) => {
+    const c = current.current;
+    const k = Math.min(1, delta * 8);
+    c.x += (x - c.x) * k;
+    c.y += (y - c.y) * k;
+    if (Math.abs(x - c.x) < 0.5 && Math.abs(y - c.y) < 0.5) [c.x, c.y] = [x, y];
+    else invalidate();
+    if (c.x || c.y) camera.setViewOffset(size.width, size.height, c.x, c.y, size.width, size.height);
+    else if (camera.view?.enabled) camera.clearViewOffset();
   });
   return null;
 }
@@ -306,6 +332,8 @@ export default function GlobeCanvas({
   onCountry,
   areaMode = "country",
   rightInset = 0,
+  leftInset = 0,
+  viewShift = NO_SHIFT,
   outline = null,
   hint: mouseHint = "",
   touchHint,
@@ -326,6 +354,9 @@ export default function GlobeCanvas({
   // imagery, borders and labels appear together instead of popping in one by one
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
+  const insets = { "--left": `${leftInset}px`, "--right": `${rightInset}px` } as CSSProperties;
+  // a page with panels floating over the globe (the trend map) moves the controls clear of them
+  const paneled = leftInset > 0;
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
   // written straight to the DOM so hovering does not re-render the scene
@@ -356,6 +387,7 @@ export default function GlobeCanvas({
         )}
         <Atmosphere />
         <FitCamera />
+        <ViewShift x={viewShift.x} y={viewShift.y} />
         <FlyTo target={focus} />
         <ZoomFeel touch={touch} />
         <OrbitControls
@@ -378,16 +410,21 @@ export default function GlobeCanvas({
       />
       <AnimatePresence>{status && <Loading key={status} label={status} />}</AnimatePresence>
       {onBox && ready && (
-        // what a click or drag on the globe does; shift-drag draws a box in either mode.
-        // phones get a thumb-reachable rail on the right edge, with a clear button in place of right-click
+        // what a click or drag on the globe does; shift-drag draws a box in either mode. Wide screens: a bar
+        // centred in the space between the side panels; narrower: a thumb-reachable rail on the right edge, below
+        // a phone's collapsed control panel, with a clear button in place of right-click
         <div
-          style={{ "--inset": `${rightInset}px` } as CSSProperties}
-          className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 transition-[left] duration-200 sm:left-[calc(50%-var(--inset)/2)] sm:right-auto sm:top-4 sm:-translate-x-1/2 sm:translate-y-0 sm:flex-row"
+          style={insets}
+          className={cn(
+            "absolute inset-x-3 flex flex-row items-center justify-center gap-2 sm:inset-x-auto sm:right-3 sm:top-4 sm:flex-col lg:left-[calc((var(--left)+100%-var(--right))/2)] lg:right-auto lg:-translate-x-1/2 lg:flex-row lg:transition-[left] lg:duration-200",
+            // below a page's panel header on phones, at the top otherwise
+            paneled ? "top-24" : "top-3 justify-end",
+          )}
         >
         <div
           role="radiogroup"
           aria-label="Selection mode"
-          className="flex flex-col items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:flex-row"
+          className="flex flex-row items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:flex-col lg:flex-row"
         >
           {([
             ["point", Crosshair, "Point", "Click to pick a point"],
@@ -407,11 +444,11 @@ export default function GlobeCanvas({
               aria-label={label}
               title={title}
               className={cn(
-                "flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-sm font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:w-auto sm:flex-row sm:gap-1.5 sm:px-2.5 sm:text-[11px]",
+                "flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-sm font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:h-7 lg:w-auto lg:flex-row lg:gap-1.5 lg:px-2.5 lg:text-[11px]",
                 tool === mode && "bg-accent text-foreground",
               )}
             >
-              <Icon className="size-4 sm:size-3.5" />
+              <Icon className="size-4 lg:size-3.5" />
               {label}
             </button>
           ))}
@@ -422,7 +459,7 @@ export default function GlobeCanvas({
             onClick={onClear}
             aria-label="Clear selection"
             title="Clear selection (right-click on the globe)"
-            className="flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border bg-card/85 font-mono text-[10px] text-muted-foreground shadow-lg shadow-black/30 backdrop-blur transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
+            className="flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border bg-card/85 font-mono text-[10px] text-muted-foreground shadow-lg shadow-black/30 backdrop-blur transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
           >
             <X className="size-4" />
             Clear
@@ -430,9 +467,15 @@ export default function GlobeCanvas({
         )}
         </div>
       )}
+      {/* bottom left; with floating panels, centred under the mode bar from tablet width up, where nothing covers it */}
       <div
         ref={readout}
-        className="pointer-events-none absolute bottom-3 left-3 font-mono text-[11px] tabular-nums text-muted-foreground sm:bottom-4 sm:left-4"
+        style={insets}
+        className={cn(
+          "pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] font-mono text-[11px] tabular-nums text-muted-foreground [text-shadow:0_0_3px_rgb(0_0_0),0_0_6px_rgb(0_0_0)] sm:bottom-4 sm:left-4",
+          paneled &&
+            "sm:bottom-auto sm:left-[calc((var(--left)+100%)/2)] sm:top-4 sm:max-w-[40%] sm:-translate-x-1/2 sm:text-center lg:left-[calc((var(--left)+100%-var(--right))/2)] lg:top-14",
+        )}
       >
         {hint}
       </div>

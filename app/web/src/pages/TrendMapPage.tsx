@@ -1,12 +1,13 @@
 // global trend map page
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { LoaderCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
+import { contourSegments } from "@/features/globe/contours";
 import { countryAt } from "@/features/globe/countryAt";
 import { seaAt } from "@/features/globe/seas";
 import Outline from "@/features/globe/Outline";
@@ -24,6 +25,9 @@ import { styleFor } from "@/features/trendmap/styles";
 import { useStationStore } from "@/store/useStationStore";
 import TimelineBar from "@/features/trendmap/TimelineBar";
 import { useTrendLayer } from "@/features/trendmap/useTrendLayer";
+import { Panel } from "@/components/ui/panel";
+import { NARROW, useMedia } from "@/lib/useMedia";
+import { cn } from "@/lib/utils";
 import { targetArea, useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
@@ -46,6 +50,9 @@ export default function TrendMapPage() {
       pointLoading: s.pointLoading,
       pointError: s.pointError,
       load: s.load,
+      hotspot: s.hotspot,
+      divergence: s.divergence,
+      divergenceArea: s.divergenceArea,
       selectPoint: s.selectPoint,
       clearSelection: s.clearSelection,
       onlySignificant: s.onlySignificant,
@@ -77,6 +84,39 @@ export default function TrendMapPage() {
   const texture = useEarthTexture();
   const area = useMemo(() => (s.regionTarget ? targetArea(s.regionTarget) : null), [s.regionTarget]);
   const outline = useOutline(area);
+  // the opposite-trend area picked in the panel, and where every variable of a fingerprint matches
+  const areaRings = useMemo(() => {
+    const d = s.divergence;
+    if (!d || s.divergenceArea == null) return null;
+    return contourSegments(d.labels.map((l) => (l === s.divergenceArea ? 1 : 0)), d.n_lat, d.n_lon, d, 0.5);
+  }, [s.divergence, s.divergenceArea]);
+  const fullRings = useMemo(() => {
+    const h = s.hotspot;
+    return h ? contourSegments(h.full, h.n_lat, h.n_lon, h, 0.5) : null;
+  }, [s.hotspot]);
+  const extras = s.showTrend && !s.hotspot;
+  const narrow = useMedia(NARROW);
+  const notes: readonly (readonly ["busy" | "warn", string])[] = [
+    ...(s.pointLoading && !s.selected ? [["busy", "loading cell"] as const] : []),
+    ...(s.stationLoading && !s.station ? [["busy", "loading station"] as const] : []),
+    ...(s.pointError && !s.pointLoading ? [["warn", s.pointError] as const] : []),
+    ...(s.stationError && !s.stationLoading ? [["warn", s.stationError] as const] : []),
+  ];
+  const stacked = !!(s.region || s.selected || s.station) || notes.length > 0;
+  // the globe centres in what the panels leave: between the side panels on wide screens, above the sheet below that
+  const sheet = useRef<HTMLDivElement>(null);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  useEffect(() => {
+    const el = sheet.current;
+    if (!el || !narrow) return setSheetHeight(0);
+    const observer = new ResizeObserver(() => setSheetHeight(el.getBoundingClientRect().height));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [narrow, stacked]);
+  const viewShift = useMemo(
+    () => (narrow ? { x: 0, y: stacked ? sheetHeight / 2 : 0 } : { x: ((stacked ? 396 : 0) - 332) / 2, y: 0 }),
+    [narrow, stacked, sheetHeight],
+  );
 
   return (
     <div className="relative h-full overflow-hidden">
@@ -109,14 +149,16 @@ export default function TrendMapPage() {
             void s.setRegion({ kind: "boundary", boundary });
           })
         }
-        rightInset={s.region || s.selected || s.station ? 396 : 0}
+        rightInset={stacked ? 396 : 0}
+        leftInset={332}
+        viewShift={viewShift}
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
         {style.wind && s.wind && (
-          <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={s.showTrend} />
+          <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={extras} />
         )}
-        <ExtremaLabels points={highsLows} visible={s.showTrend} />
+        <ExtremaLabels points={highsLows} visible={extras} />
         {stations && stationStyle && (
           <StationLayer
             lat={stations.lat}
@@ -132,7 +174,9 @@ export default function TrendMapPage() {
             }}
           />
         )}
-        {s.showTrend && edges && (
+        {s.showTrend && fullRings && fullRings.length > 0 && <Outline rings={fullRings} color={0xffffff} width={1.4} />}
+        {areaRings && areaRings.length > 0 && <Outline rings={areaRings} color={0xfbbf24} width={2} />}
+        {extras && edges && (
           <>
             <Outline rings={edges.first} color={0xfd8d3c} width={1.5} dashed />
             <Outline rings={edges.shown} color={0xf4fbff} width={1.8} />
@@ -140,29 +184,27 @@ export default function TrendMapPage() {
         )}
       </GlobeCanvas>
       <ControlPanel />
-      <AnimatePresence>
-        {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null || s.station !== null} />}
-        {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
-        {s.station && <StationPanel key="station" station={s.station} loading={s.stationLoading} />}
-      </AnimatePresence>
-      {/* phones show one bottom sheet at a time: the timeline gives way to a point or region panel */}
-      {s.showTrend && !((s.selected || s.station || s.region) && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
-      {s.pointLoading && !s.selected && (
-        <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          <LoaderCircle className="size-3 animate-spin" /> loading cell
+      {/* every selection panel in one stack: a column on the right on wide screens, a bottom sheet below that;
+          the most specific selection (cell or station) comes first */}
+      {stacked && (
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex max-h-[62%] flex-col justify-end lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:max-h-none lg:w-[380px] lg:justify-start">
+          <div ref={sheet} className="scrollbar-thin pointer-events-auto flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg">
+            <AnimatePresence initial={false}>
+              {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
+              {s.station && <StationPanel key="station" station={s.station} loading={s.stationLoading} />}
+              {s.region && <RegionPanel key="region" region={s.region} />}
+            </AnimatePresence>
+            {notes.map(([tone, text]) => (
+              <Panel key={text} className={cn("flex items-center gap-2 px-4 py-2.5 font-mono text-[11px]", tone === "warn" ? "text-warning" : "text-muted-foreground")}>
+                {tone === "busy" && <LoaderCircle className="size-3 animate-spin" />}
+                {text}
+              </Panel>
+            ))}
+          </div>
         </div>
       )}
-      {s.stationLoading && !s.station && (
-        <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          <LoaderCircle className="size-3 animate-spin" /> loading station
-        </div>
-      )}
-      {s.stationError && !s.stationLoading && (
-        <div className="absolute bottom-3 right-4 font-mono text-[11px] text-warning">{s.stationError}</div>
-      )}
-      {s.pointError && !s.pointLoading && (
-        <div className="absolute bottom-3 right-4 font-mono text-[11px] text-warning">{s.pointError}</div>
-      )}
+      {/* narrow screens show one bottom sheet at a time: the timeline gives way to the selection */}
+      {s.showTrend && !(narrow && stacked) && <TimelineBar rightInset={stacked ? 396 : 0} />}
     </div>
   );
 }

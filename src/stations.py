@@ -71,7 +71,7 @@ def mann_kendall(years: np.ndarray, values: np.ndarray) -> tuple[float, float, f
 @lru_cache
 def metadata() -> pd.DataFrame:
     try:
-        with dataset._open("stations/stations.parquet") as file:
+        with dataset.open_file("stations/stations.parquet") as file:
             frame = pd.read_parquet(file)
     except Exception as e:
         raise dataset.DatasetError(f"Could not read the station list ({dataset.REPO}): {e}") from e
@@ -88,7 +88,7 @@ def metadata() -> pd.DataFrame:
 
 def _monthly(key: str) -> pd.DataFrame:
     try:
-        with dataset._open("stations/monthly.parquet", block_size=1 << 22) as file:
+        with dataset.open_file("stations/monthly.parquet", block_size=1 << 22) as file:
             table = pq.read_table(file, columns=["station_id", "date", key])
     except Exception as e:
         raise dataset.DatasetError(f"Could not read the station series ({dataset.REPO}): {e}") from e

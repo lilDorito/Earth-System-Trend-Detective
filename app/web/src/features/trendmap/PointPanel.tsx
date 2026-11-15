@@ -9,13 +9,18 @@ import { Panel, PanelSection } from "@/components/ui/panel";
 import { Label } from "@/components/ui/label";
 import { Status } from "@/components/ui/status";
 import { formatLatLon, formatP, formatSigned } from "@/lib/format";
+import { describeTrend } from "@/lib/summary";
+import { usingMockData } from "@/api";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
+import Insights from "./Insights";
 import TrendChart from "./TrendChart";
 
 export default function PointPanel({ point, loading }: { point: TrendPoint; loading: boolean }) {
   const clearSelection = useTrendMapStore((s) => s.clearSelection);
   const units = useTrendMapStore((s) => s.meta?.units ?? "");
   const city = useTrendMapStore((s) => s.picked?.name);
+  const meta = useTrendMapStore((s) => s.meta);
+  const live = !usingMockData;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && clearSelection();
@@ -29,7 +34,7 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="scrollbar-thin absolute inset-x-3 bottom-3 z-20 max-h-[65%] overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-[380px]"
+      className="w-full"
     >
       <Panel>
         <div className="flex items-center justify-between gap-2 px-4 py-3">
@@ -68,11 +73,25 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
               {point.significant_fdr ? "significant" : "not significant"} at FDR 5%
             </Status>
           </div>
+          {meta && (
+            <p className="text-sm leading-relaxed">
+              {describeTrend({
+                name: meta.name,
+                place: city ?? "this grid cell",
+                units,
+                slopeDecade: point.slope_decade,
+                significant: point.significant_hr,
+                start: point.years[0],
+                end: point.years[point.years.length - 1],
+              })}
+            </p>
+          )}
         </PanelSection>
 
         <PanelSection>
           <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} units={units} height={window.matchMedia("(max-width: 639px)").matches ? 160 : 200} />
         </PanelSection>
+        {live && meta && <Insights variable={meta.key} place={{ lat: point.lat, lon: point.lon }} />}
       </Panel>
     </motion.aside>
   );

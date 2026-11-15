@@ -44,7 +44,7 @@ export default function StationPanel({ station, loading }: { station: StationCom
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="scrollbar-thin absolute inset-x-3 bottom-3 z-20 max-h-[65%] overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-[380px]"
+      className="w-full"
     >
       <Panel>
         <div className="flex items-center justify-between gap-2 px-4 py-3">

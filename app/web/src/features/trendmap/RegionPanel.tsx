@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Panel, PanelSection } from "@/components/ui/panel";
 import { Status } from "@/components/ui/status";
 import Chart, { baseOption, palette, valueAxis } from "@/features/charts/Chart";
+import { usingMockData } from "@/api";
 import { formatP, formatSigned } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import { useTrendMapStore } from "@/store/useTrendMapStore";
+import { describeTrend } from "@/lib/summary";
+import { targetPlace, useTrendMapStore } from "@/store/useTrendMapStore";
+import Insights from "./Insights";
 import { divergingColor, styleFor } from "./styles";
 
 const shortName = (region: TrendRegion) => region.label.split(" (")[0];
@@ -84,10 +86,12 @@ function VersusWorld({ region, units }: { region: TrendRegion; units: string }) 
   return <Chart option={option} height={150} />;
 }
 
-export default function RegionPanel({ region, shifted }: { region: TrendRegion; shifted: boolean }) {
+export default function RegionPanel({ region }: { region: TrendRegion }) {
   const setRegion = useTrendMapStore((s) => s.setRegion);
   const units = useTrendMapStore((s) => s.meta?.units ?? "");
   const style = styleFor(useTrendMapStore((s) => s.meta?.key));
+  const meta = useTrendMapStore((s) => s.meta);
+  const target = useTrendMapStore((s) => s.regionTarget);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && void setRegion(null);
@@ -104,11 +108,7 @@ export default function RegionPanel({ region, shifted }: { region: TrendRegion; 
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className={cn(
-        // phones: a bottom sheet over the lower part of the globe; wider screens: a side panel
-        "scrollbar-thin absolute inset-x-3 bottom-3 z-10 max-h-[65%] overflow-y-auto overscroll-contain sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-[380px]",
-        shifted && "sm:right-[412px]",
-      )}
+      className="w-full"
     >
       <Panel>
         <div className="flex items-center justify-between gap-2 px-4 py-3">
@@ -158,6 +158,19 @@ export default function RegionPanel({ region, shifted }: { region: TrendRegion; 
             </Status>
             {region.autocorr_corrected && <Status>autocorrelation-corrected</Status>}
           </div>
+          {meta && (
+            <p className="text-sm leading-relaxed">
+              {describeTrend({
+                name: meta.name,
+                place: shortName(region),
+                units,
+                slopeDecade: region.slope_decade,
+                significant: region.trend !== "no trend",
+                start: region.start,
+                end: region.end,
+              })}
+            </p>
+          )}
         </PanelSection>
 
         <PanelSection>
@@ -171,6 +184,7 @@ export default function RegionPanel({ region, shifted }: { region: TrendRegion; 
           <Label className="mb-2">{style.stripes ?? "Stripes"}, one bar per year</Label>
           <Stripes region={region} units={units} stops={style.change} />
         </PanelSection>
+        {!usingMockData && meta && target && <Insights variable={meta.key} place={targetPlace(target)} />}
       </Panel>
     </motion.aside>
   );

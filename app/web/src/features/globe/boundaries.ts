@@ -4,7 +4,7 @@ import type { BBox, Boundary } from "@/api/types";
 
 export type Ring = number[]; // lon, lat, lon, lat, ...
 
-type Indexed = Boundary & { key: string; countryKey: string };
+type Indexed = Boundary & { key: string; altKey: string; countryKey: string };
 
 const url = (path: string) => `${import.meta.env.BASE_URL}regions/${path}`;
 
@@ -42,6 +42,7 @@ export function loadBoundaries(): Promise<Boundary[]> {
           east: +r[at.east],
           areaKm2: +r[at.area_km2],
           key: fold(String(r[at.name])),
+          altKey: at.name_uk == null ? "" : fold(String(r[at.name_uk] ?? "")),
           countryKey: fold(countryName),
         } satisfies Indexed;
       });
@@ -54,9 +55,9 @@ export function loadBoundaries(): Promise<Boundary[]> {
 }
 
 function score(b: Indexed, q: string): number {
-  if (b.key === q) return 0;
-  if (b.key.startsWith(q)) return 1;
-  if (b.key.includes(` ${q}`) || b.key.includes(`-${q}`)) return 2;
+  if (b.key === q || b.altKey === q) return 0;
+  if (b.key.startsWith(q) || b.altKey.startsWith(q)) return 1;
+  if (b.key.includes(` ${q}`) || b.key.includes(`-${q}`) || b.altKey.includes(` ${q}`)) return 2;
   if (b.key.includes(q)) return 3;
   // "ukraine" also lists Ukraine's regions, after the country itself
   if (b.kind === "admin1" && b.countryKey.startsWith(q)) return 4;

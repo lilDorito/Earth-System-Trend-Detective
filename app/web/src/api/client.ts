@@ -19,6 +19,12 @@ import type {
   TrendVariable,
   TrendWind,
   VariableInfo,
+  Diagnosis,
+  Divergence,
+  Hotspots,
+  InsightPlace,
+  Scan,
+  Scenario,
 } from "./types";
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
@@ -33,6 +39,8 @@ export class ApiError extends Error {
 }
 
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
+const placeQuery = (place: InsightPlace) =>
+  query(Object.fromEntries(Object.entries(place).map(([k, v]) => [k, typeof v === "number" ? v.toFixed(3) : String(v)])));
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -65,10 +73,23 @@ export const httpApi = {
   trendFrames: (variable: string, kind: "anomaly" | "values" = "anomaly") =>
     request<TrendFrames>(`/api/trendmap/frames?${query({ variable, kind })}`),
   trendWind: () => request<TrendWind>("/api/trendmap/wind"),
+  insightScan: (place: InsightPlace) => request<Scan>(`/api/insights/scan?${placeQuery(place)}`),
+  insightDiagnose: (variable: string, place: InsightPlace) =>
+    request<Diagnosis>(`/api/insights/diagnose?${query({ variable })}&${placeQuery(place)}`),
+  insightScenarios: () => request<Scenario[]>("/api/insights/scenarios"),
+  insightHotspots: (scenario: string) => request<Hotspots>(`/api/insights/hotspots?${query({ scenario })}`),
+  insightDivergence: (variable: string) => request<Divergence>(`/api/insights/divergence?${query({ variable })}`),
   trendRegion: (variable: string, region: TrendRegionQuery) => {
     const where: Record<string, string> = region.name
       ? { name: region.name }
-      : Object.fromEntries(Object.entries(region.box ?? {}).map(([k, v]) => [k, String(v)]));
+      : {
+          ...Object.fromEntries(
+            Object.entries(region.box ?? {})
+              .filter(([k]) => k !== "type")
+              .map(([k, v]) => [k, String(v)]),
+          ),
+          ...(region.label ? { label: region.label } : {}),
+        };
     return request<TrendRegion>(`/api/trendmap/region?${query({ variable, ...where })}`);
   },
   trendPoint: (variable: string, lat: number, lon: number) =>

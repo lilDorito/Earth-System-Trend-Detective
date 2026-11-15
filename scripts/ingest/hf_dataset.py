@@ -3,6 +3,7 @@
 #   python scripts/ingest/hf_dataset.py build              # everything
 #   python scripts/ingest/hf_dataset.py build sst merra2_t2m
 #   python scripts/ingest/hf_dataset.py verify
+#   python scripts/ingest/hf_dataset.py trends             # trend map products only (build runs it too)
 #   hf upload lilDorito/earth-trend-data data/hf . --repo-type dataset
 
 import argparse
@@ -255,6 +256,8 @@ from public NASA, NOAA, Copernicus, Met Office and ETH Zurich products; see each
 | `stations/trends_station.parquet` | per-station Mann-Kendall / Sen trends per element |
 | `regions/index.parquet` | Natural Earth countries and admin-1 regions: id, name, country, bounds, label point, area |
 | `regions/weights.parquet` | `id, lat, lon, frac`: share of each cell's area inside the region |
+| `insights/cells.npz`, `insights/regions.npz` | every variable's per-cell trend, p, scatter and jump flag in one file, the annual mean series of every region, and an annual Nino 3.4 index |
+| `trends/<variable>.npz` | whole-record trend map products: Sen slope per year and FDR significance per cell, 2-degree year maps (anomalies and values), global means, colour scales |
 
 `lat`/`lon` are cell centres (integer + 0.5); `date` is the first day of the month. Cells without data are omitted.
 `valid_frac` is the share of the cell covered by valid source data (NASA grids only, cells below 0.5 dropped).
@@ -310,6 +313,50 @@ def write_card(catalog: pd.DataFrame) -> None:
     (OUT / "LICENSE.md").write_text(LICENSE.format(lines=lines), encoding="utf-8")
 
 
+# trends/<key>.npz: whole-record trend grid, year maps and colour scales per variable, read by the API
+# (src/trendmaps.py), plus trends/_wind.npz with the mean wind vector
+def build_trends(keys: list[str]) -> None:
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from src import dataset, trendmaps
+
+    dataset.LOCAL = str(OUT)
+    dataset.catalog.cache_clear()
+    out = OUT / "trends"
+    out.mkdir(exist_ok=True)
+    for key in keys or list(dataset.catalog()):
+        if key not in dataset.catalog():
+            print(f"  {key:24s} skipped (not in the catalog)")
+            continue
+        started = time.time()
+        path = out / f"{key}.npz"
+        products = trendmaps.build(key)
+        path.write_bytes(trendmaps.to_bytes(products))
+        print(f"  {key:24s} {len(products['years'])} years, {path.stat().st_size / 1e6:.1f} MB, {time.time() - started:.1f} s")
+        dataset.annual.cache_clear()
+    if (not keys or set(keys) & set(trendmaps.WIND_PARTS)) and all(k in dataset.catalog() for k in trendmaps.WIND_PARTS):
+        (out / "_wind.npz").write_bytes(trendmaps.to_bytes(trendmaps.build_wind()))
+        print("  _wind                    mean 10 m wind vector")
+        dataset.annual.cache_clear()
+    # across all variables, so always rebuilt in full
+    if (OUT / "regions" / "weights.parquet").exists():
+        started = time.time()
+        cells, regions = trendmaps.build_insights(list(dataset.catalog()))
+        (OUT / "insights").mkdir(exist_ok=True)
+        for name, products in (("cells", cells), ("regions", regions)):
+            (OUT / "insights" / f"{name}.npz").write_bytes(trendmaps.to_bytes(products))
+        size = sum(f.stat().st_size for f in (OUT / "insights").glob("*.npz")) / 1e6
+        print(f"  insights: all-variable cells and region series, {size:.1f} MB, {time.time() - started:.0f} s")
+
+
+def trends(args) -> None:
+    print("trend maps:")
+    build_trends(args.keys)
+    if (OUT / "catalog.parquet").exists():
+        write_card(pd.read_parquet(OUT / "catalog.parquet"))
+
+
 def build(args) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     print("grids:")
@@ -318,6 +365,8 @@ def build(args) -> None:
         print("stations:")
         build_stations()
     catalog = write_catalog(rows)
+    print("trend maps:")
+    build_trends(args.keys)
     write_card(catalog)
     total = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file()) / 1e6
     print(f"done: {len(catalog)} variables, {total:,.0f} MB in {OUT}")
@@ -359,6 +408,9 @@ def main() -> None:
     p.add_argument("keys", nargs="*", help="variables to rebuild (default: all, plus stations)")
     p.set_defaults(func=build)
     sub.add_parser("verify", help="compare every grid with its source").set_defaults(func=verify)
+    p = sub.add_parser("trends", help="rebuild the trend map products from data/hf")
+    p.add_argument("keys", nargs="*", help="variables (default: all)")
+    p.set_defaults(func=trends)
     args = parser.parse_args()
     args.func(args)
 

@@ -18,6 +18,8 @@ function respond<T>(produce: () => T, latency = 250): Promise<T> {
   });
 }
 
+const unavailable = () => Promise.reject(new Error("Needs the real dataset: run with VITE_DATA_SOURCE=api"));
+
 export const mockApi: Api = {
   health: () => respond(() => ({ status: "ok", data_mode: "mock", variables: variables.length })),
   variables: () => respond(() => variables),
@@ -30,6 +32,12 @@ export const mockApi: Api = {
   trendGlobalMean: () => respond(trendGlobalMean),
   trendFrames: (_, kind) => respond(() => trendFrames(kind), 400),
   trendWind: () => respond(trendWind),
+  // the insights run on the real dataset only
+  insightScan: () => unavailable(),
+  insightDiagnose: () => unavailable(),
+  insightScenarios: () => respond(() => []),
+  insightHotspots: () => unavailable(),
+  insightDivergence: () => unavailable(),
   trendRegion: (_, region) => respond(() => trendRegion(region)),
   trendPoint: (_, lat, lon) => respond(() => trendPoint(lat, lon)),
   stations: (element) => respond(() => stations(element), 300),

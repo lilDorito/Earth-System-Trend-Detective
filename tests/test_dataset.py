@@ -67,8 +67,9 @@ def local(tmp_path, monkeypatch):
 
 def clear_caches():
     for cached in (dataset.catalog, dataset.annual, dataset._grid_file, dataset.regions, dataset._region_weights,
-                   trendmap._ds, trendmap._grid, trendmap._frames):
-        cached.cache_clear()
+                   trendmap._ds, trendmap._grid, trendmap._frames, trendmap._pre):
+        getattr(cached, "cache_clear", lambda: None)()  # a test may have patched one with a plain function
+    trendmap._responses.clear()
 
 
 def test_annual_keeps_complete_years_and_enough_months(local):
@@ -167,3 +168,22 @@ def test_sen_slope_uses_real_years():
     years = np.array([2000, 2001, 2002, 2006, 2007, 2008], dtype=float)
     slope, _ = trendmap._sen(years, 0.1 * (years - 2000))
     assert slope == pytest.approx(0.1)
+
+
+def test_precomputed_trend_products_match_live(local, monkeypatch):
+    from src import trendmaps
+
+    client = TestClient(app)
+    paths = ["meta", "grid", "global-mean", "summary", "frames", "frames?kind=values"]
+    url = lambda p: f"/api/trendmap/{p}{'&' if '?' in p else '?'}variable=fake_t2m"  # noqa: E731
+    live = {p: client.get(url(p)).json() for p in paths}
+    (local / "trends").mkdir()
+    (local / "trends" / "fake_t2m.npz").write_bytes(trendmaps.to_bytes(trendmaps.build("fake_t2m")))
+    clear_caches()
+    assert trendmaps.read("fake_t2m") is not None
+    loads = []
+    real = dataset.annual
+    monkeypatch.setattr(dataset, "annual", lambda key: loads.append(key) or real(key))
+    pre = {p: client.get(url(p)).json() for p in paths}
+    assert loads == []  # served from the file alone
+    assert pre == live

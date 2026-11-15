@@ -53,7 +53,7 @@ class DatasetError(Exception):
     pass
 
 
-def _open(path: str, block_size: int = 1 << 18):
+def open_file(path: str, block_size: int = 1 << 18):
     if LOCAL:
         return open(Path(LOCAL if Path(LOCAL).is_absolute() else ROOT / LOCAL) / path, "rb")
     from huggingface_hub import HfFileSystem
@@ -69,7 +69,7 @@ def display_units(key: str, units: str) -> tuple[float, str]:
 @lru_cache
 def catalog() -> dict[str, dict]:
     try:
-        with _open("catalog.parquet") as file:
+        with open_file("catalog.parquet") as file:
             frame = pd.read_parquet(file)
     except Exception as e:
         raise DatasetError(f"Could not read the dataset catalog ({REPO}): {e}") from e
@@ -104,7 +104,7 @@ def annual(key: str) -> Annual:
         u, v = (annual(part) for part in VIRTUAL[key]["parts"])
         years, iu, iv = np.intersect1d(u.years, v.years, return_indices=True)
         return Annual(years, np.hypot(u.values[iu], v.values[iv]))
-    with _open(f"annual/{key}.parquet", block_size=1 << 22) as file:
+    with open_file(f"annual/{key}.parquet", block_size=1 << 22) as file:
         table = pq.read_table(file)
     year = table["year"].to_numpy()
     months = table["months"].to_numpy()
@@ -131,7 +131,7 @@ def _grid_file(key: str) -> pq.ParquetFile:
     if key in VIRTUAL:
         raise DatasetError(f"{variable(key)['name']} has annual maps only")
     # the footer stays cached, so a later point read only fetches one row group
-    return pq.ParquetFile(_open(f"grid/{key}.parquet"))
+    return pq.ParquetFile(open_file(f"grid/{key}.parquet"))
 
 
 def _band(key: str, lat: float, own_handle: bool = False) -> pd.DataFrame:
@@ -147,7 +147,7 @@ def _band(key: str, lat: float, own_handle: bool = False) -> pd.DataFrame:
     columns = ["date", "lat", "lon", "value", "valid_frac"]
     if own_handle:
         # a file handle is not thread-safe; the cached footer saves re-reading it
-        with _open(f"grid/{key}.parquet") as handle:
+        with open_file(f"grid/{key}.parquet") as handle:
             rows = pq.ParquetFile(handle, metadata=file.metadata).read_row_groups(groups, columns=columns).to_pandas()
     else:
         rows = file.read_row_groups(groups, columns=columns).to_pandas()
@@ -244,7 +244,7 @@ def area_series(key: str, south: float, north: float, west: float, east: float) 
 def regions() -> pd.DataFrame:
     # Natural Earth countries and admin-1 regions (scripts/ingest/regions.py)
     try:
-        with _open("regions/index.parquet") as file:
+        with open_file("regions/index.parquet") as file:
             return pd.read_parquet(file).set_index("id", drop=False)
     except Exception as e:
         raise DatasetError(f"Could not read the region index ({REPO}): {e}") from e
@@ -252,7 +252,7 @@ def regions() -> pd.DataFrame:
 
 @lru_cache
 def _region_weights() -> pd.DataFrame:
-    with _open("regions/weights.parquet", block_size=1 << 22) as file:
+    with open_file("regions/weights.parquet", block_size=1 << 22) as file:
         return pd.read_parquet(file).astype({"lat": "float64", "lon": "float64", "frac": "float64"}).set_index("id").sort_index()
 
 

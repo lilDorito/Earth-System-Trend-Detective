@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import type { TrendVariable } from "@/api/types";
+import { usingMockData } from "@/api";
+import { NARROW } from "@/lib/useMedia";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -18,7 +20,9 @@ import { cn } from "@/lib/utils";
 import { useTrendMapStore, type Display } from "@/store/useTrendMapStore";
 import { useStationStore } from "@/store/useStationStore";
 import { STATION_ELEMENTS, elementFor } from "@/features/stations/elements";
-import { bandGradient, styleFor, valueRange } from "./styles";
+import { DESCRIPTIONS } from "./descriptions";
+import { AskBox, Fingerprints, OppositeTrends } from "./Discover";
+import { FINGERPRINT, bandGradient, styleFor, valueRange } from "./styles";
 import TrendChart from "./TrendChart";
 
 const isPhone = () => window.matchMedia("(max-width: 639px)").matches;
@@ -31,8 +35,20 @@ const DISPLAYS: { value: Display; label: string }[] = [
 // colour bar for what is on the globe, with notes for the variables drawn in their own way
 function Legend() {
   const s = useTrendMapStore(
-    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, wind: s.wind })),
+    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, wind: s.wind, hotspot: s.hotspot })),
   );
+  if (s.hotspot) {
+    return (
+      <PanelSection className="space-y-2">
+        <Label>{s.hotspot.name}: variables matching</Label>
+        <div className="h-1.5" style={{ background: bandGradient(FINGERPRINT) }} />
+        <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
+          <span>none</span>
+          <span>all {s.hotspot.n_vars}</span>
+        </div>
+      </PanelSection>
+    );
+  }
   if (!s.meta) return null;
   const style = styleFor(s.meta.key);
   const units = s.meta.units;
@@ -181,7 +197,9 @@ export default function ControlPanel() {
       onlySignificant: s.onlySignificant,
       view: s.view,
       regionError: s.regionError,
-      hasSelection: s.selected !== null || s.station !== null,
+      // changes with every new selection, so each one folds the panel away on narrow screens
+      selection: `${s.selected?.lat},${s.selected?.lon}|${s.station?.id ?? ""}|${s.region?.label ?? ""}`,
+      hasSelection: s.selected !== null || s.station !== null || s.region !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
     })),
@@ -191,15 +209,16 @@ export default function ControlPanel() {
   const units = s.meta?.units ?? "";
 
   useEffect(() => {
-    if (s.hasSelection && isPhone()) setOpen(false);
-  }, [s.hasSelection]);
+    // below desktop width the panel and the selection sheet compete for the screen: the selection wins
+    if (s.hasSelection && window.matchMedia(NARROW).matches) setOpen(false);
+  }, [s.selection, s.hasSelection]);
 
   return (
     // on phones the open panel sits above the point and region sheets; collapsing it reveals them again
     <Panel
       className={cn(
         "scrollbar-thin absolute inset-x-3 top-3 max-h-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain sm:inset-x-auto sm:left-4 sm:top-4 sm:w-[300px]",
-        open && "max-sm:z-30",
+        open && "max-lg:z-30",
       )}
     >
       <div className="flex items-center justify-between gap-2 px-4 py-3">
@@ -242,6 +261,8 @@ export default function ControlPanel() {
             </PanelSection>
           )}
 
+          {!usingMockData && <AskBox />}
+
           {s.variables.length > 1 && (
             <PanelSection>
               <Dropdown
@@ -252,6 +273,7 @@ export default function ControlPanel() {
                 )}
                 aria-label="Variable"
               />
+              {DESCRIPTIONS[s.variable] && <p className="mt-2 text-xs leading-snug text-muted-foreground">{DESCRIPTIONS[s.variable]}</p>}
             </PanelSection>
           )}
 
@@ -294,6 +316,8 @@ export default function ControlPanel() {
           {s.showTrend && <Legend />}
 
           <Stations />
+          <Fingerprints />
+          <OppositeTrends />
 
           {s.regionError && (
             <PanelSection>

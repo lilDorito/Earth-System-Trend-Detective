@@ -1,24 +1,27 @@
-# global trend map endpoints, each takes a variable and an optional year range (default: the whole record)
+# global trend map endpoints, each takes a variable and an optional year range (default: the whole record).
+# The whole record is read from trends/<key>.npz in the dataset (src/trendmaps.py); other ranges, mock data
+# and dataset revisions without those files are computed here
 
+import gzip
 import json
 import threading
-import warnings
 from functools import lru_cache, wraps
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pymannkendall as mk
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
-from src import dataset, gridtrends
+from src import dataset, gridtrends, trendmaps
 from src.config import settings
+from src.trendmaps import coarsen as _coarsen
+from src.trendmaps import nanmean as _nanmean
+from src.trendmaps import value_range as _value_range
 
 router = APIRouter(prefix="/api/trendmap", tags=["trendmap"])
 MIN_YEARS = 8  # Mann-Kendall on fewer annual points is meaningless
-BASELINE_YEARS = 5  # anomalies are relative to the mean of the first years of the period
 MAX_SNAP_DEG = 3.0  # a click may snap this far to the nearest cell with data
-FRAME_STEP_DEG = 2.0  # year maps are sent coarser; the globe smooths them anyway
 DEFAULT = gridtrends.DEMO_KEY
 Variable = Query(DEFAULT, description="dataset variable key, see /api/trendmap/variables")
 
@@ -41,12 +44,6 @@ def _what(ds: gridtrends.GridDataset) -> str:
 def _clean(values, decimals: int) -> list[float | None]:
     arr = np.round(np.asarray(values, dtype=np.float64), decimals).ravel()
     return [None if v != v else float(v) for v in arr.tolist()]
-
-
-def _nanmean(values: np.ndarray, axis: int) -> np.ndarray:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices are expected (no-data cells)
-        return np.nanmean(values, axis=axis)
 
 
 def _sen(years: np.ndarray, values: np.ndarray) -> tuple[float, float]:
@@ -94,8 +91,53 @@ def _ds(variable: str) -> gridtrends.GridDataset:
         raise HTTPException(503, str(e))
 
 
+@_one_at_a_time
+@lru_cache(maxsize=8)
+def _pre(name: str) -> dict | None:
+    # precomputed products for the whole record, None when the dataset revision has none
+    if settings.data_mode != "live":
+        return None
+    try:
+        return trendmaps.read(name)
+    except dataset.DatasetError:
+        return None
+
+
+_responses: dict[str, tuple[bytes, bytes]] = {}
+RESPONSES_KEPT = 12  # about 1 MB each, compressed and not
+
+
+def _send(request: Request, key: str, build) -> Response:
+    # whole-record responses are serialised and gzipped once, then served from memory; an already compressed
+    # response passes the gzip middleware untouched
+    hit = _responses.pop(key, None)
+    if hit is None:
+        raw = json.dumps(build(), separators=(",", ":")).encode()
+        hit = (raw, gzip.compress(raw, 6))
+    _responses[key] = hit  # most recently used last
+    while len(_responses) > RESPONSES_KEPT:
+        _responses.pop(next(iter(_responses)))
+    raw, packed = hit
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(packed, media_type="application/json", headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(raw, media_type="application/json")
+
+
+def _years_of(variable: str) -> np.ndarray:
+    pre = _pre(variable)
+    return pre["years"] if pre is not None else _ds(variable).years
+
+
+def _full(variable: str, start: int, end: int) -> dict | None:
+    # the precomputed products, when the request is for exactly the period they cover
+    pre = _pre(variable)
+    if pre is not None and start == int(pre["years"][0]) and end == int(pre["years"][-1]):
+        return pre
+    return None
+
+
 def _range(variable: str, start: int | None, end: int | None) -> tuple[int, int]:
-    years = _ds(variable).years
+    years = _years_of(variable)
     y0, y1 = int(years[0]), int(years[-1])
     start = y0 if start is None else start
     end = y1 if end is None else end
@@ -115,6 +157,9 @@ def _slice(variable: str, start: int, end: int) -> np.ndarray:
 @_one_at_a_time
 @lru_cache(maxsize=16)
 def _grid(variable: str, start: int, end: int):
+    full = _full(variable, start, end)
+    if full is not None:
+        return full["slope"], full["sig"].astype(bool)
     ds = _ds(variable)
     mask = _slice(variable, start, end)
     slope, _p, _q, significant = gridtrends.compute_grid(ds.values[mask], ds.years[mask])
@@ -126,27 +171,13 @@ def _grid(variable: str, start: int, end: int):
 def _frames(variable: str, start: int, end: int):
     ds = _ds(variable)
     data = ds.values[_slice(variable, start, end)]
-    n_base = min(BASELINE_YEARS, max(1, data.shape[0] // 2))
-    anomaly = (data - _nanmean(data[:n_base], axis=0)).astype(np.float32)
+    anomaly, n_base = trendmaps.anomalies(data)
     return anomaly, gridtrends.global_mean_series(anomaly, ds.lat), n_base
 
 
 def _geometry(lat: np.ndarray, lon: np.ndarray) -> dict:
     # first cell centre and spacing, so the client places cells exactly (pole-to-pole or cell-centred grids)
     return {"lat0": float(lat[0]), "lon0": float(lon[0]), "dlat": float(lat[1] - lat[0]), "dlon": float(lon[1] - lon[0])}
-
-
-def _coarsen(values: np.ndarray, lat: np.ndarray, lon: np.ndarray):
-    # block means over k x k cells, skipping NaN; values: (n, lat, lon). A block needs half its cells,
-    # so isolated cells (lakes in ocean products) do not grow into 2-degree blobs
-    k = int(round(FRAME_STEP_DEG / (lat[1] - lat[0])))
-    if k < 2 or len(lat) % k or len(lon) % k:
-        return values, lat, lon
-    n, nlat, nlon = values.shape
-    blocks = values.reshape(n, nlat // k, k, nlon // k, k).transpose(0, 1, 3, 2, 4).reshape(n, nlat // k, nlon // k, k * k)
-    coarse = _nanmean(blocks, axis=3)
-    coarse[np.isfinite(blocks).sum(axis=3) < (k * k) / 2] = np.nan
-    return coarse, lat.reshape(-1, k).mean(axis=1), lon.reshape(-1, k).mean(axis=1)
 
 
 def _years(variable: str, start: int, end: int) -> list[int]:
@@ -169,6 +200,29 @@ def variables():
 
 @router.get("/meta")
 def meta(variable: str = Variable):
+    pre = _pre(variable)
+    if pre is not None:
+        try:
+            info = dataset.variable(variable)
+        except KeyError as e:
+            raise HTTPException(404, str(e).strip("'\""))
+        return {
+            "demo": False,
+            "key": variable,
+            "label": f"{info['name']}, annual mean",
+            "name": info["name"],
+            "group": info["group"],
+            "domain": info["domain"],
+            "variable": variable,
+            "units": info["units"],
+            "years": [int(pre["years"][0]), int(pre["years"][-1])],
+            "min_years": MIN_YEARS,
+            "n_lat": len(dataset.LAT),
+            "n_lon": len(dataset.LON),
+            "trend_scale": float(pre["trend_scale"]),
+            "anomaly_scale": float(pre["anomaly_scale"]),
+            "value_range": [float(v) for v in pre["value_range"]],
+        }
     ds = _ds(variable)
     start, end = int(ds.years[0]), int(ds.years[-1])
     slope, _ = _grid(variable, start, end)
@@ -194,18 +248,9 @@ def meta(variable: str = Variable):
     }
 
 
-def _value_range(values: np.ndarray) -> list[float]:
-    # 5th and 95th percentile of the annual maps, for the values view; wider would let capped cells
-    # (GLDAS soil moisture sits at 100 kg/m2 over ice) squeeze ordinary values into a few colours
-    finite = values[np.isfinite(values)]
-    if not finite.size:
-        return [0.0, 1.0]
-    lo, hi = np.quantile(finite, [0.05, 0.95])
-    return [float(f"{lo:.3g}"), float(f"{hi:.3g}")]
-
-
 @router.get("/frames")
 def frames(
+    request: Request,
     variable: str = Variable,
     start: int | None = None,
     end: int | None = None,
@@ -213,15 +258,27 @@ def frames(
 ):
     # anomaly: vs the mean of the first years; values: the annual means themselves
     start, end = _range(variable, start, end)
-    anomaly, mean, n_base = _frames(variable, start, end)
-    ds = _ds(variable)
-    if kind == "values":
-        data = ds.values[_slice(variable, start, end)]
-        mean = gridtrends.global_mean_series(data, ds.lat)
+    if _full(variable, start, end) is not None:
+        return _send(request, f"frames:{variable}:{kind}", lambda: _frames_body(variable, start, end, kind))
+    return _frames_body(variable, start, end, kind)
+
+
+def _frames_body(variable: str, start: int, end: int, kind: str) -> dict:
+    full = _full(variable, start, end)
+    if full is not None:
+        coarse, mean = full[f"{'value' if kind == 'values' else 'anomaly'}_frames"], full[f"{'value' if kind == 'values' else 'anomaly'}_mean"]
+        lat, lon, n_base = full["frame_lat"], full["frame_lon"], int(full["n_base"])
+        years = [int(y) for y in full["years"]]
     else:
-        data = anomaly
-    coarse, lat, lon = _coarsen(data, ds.lat, ds.lon)
-    years = _years(variable, start, end)
+        anomaly, mean, n_base = _frames(variable, start, end)
+        ds = _ds(variable)
+        if kind == "values":
+            data = ds.values[_slice(variable, start, end)]
+            mean = gridtrends.global_mean_series(data, ds.lat)
+        else:
+            data = anomaly
+        coarse, lat, lon = _coarsen(data, ds.lat, ds.lon)
+        years = _years(variable, start, end)
     # enough decimals for smooth contours over the data's own spread (pH spans about 0.1)
     spread = np.nanquantile(np.abs(coarse - np.nanmedian(coarse)), 0.98) if np.isfinite(coarse).any() else 1.0
     # three significant digits of the spread: a thousandth of the range, far below one of the 24 colour bands
@@ -243,10 +300,9 @@ def frames(
 @_one_at_a_time
 @lru_cache(maxsize=2)
 def _wind(start: int, end: int):
-    u, v = (_ds(key) for key in ("merra2_u10m", "merra2_v10m"))
-    pick = lambda ds: ds.values[(ds.years >= start) & (ds.years <= end)].astype(np.float64)  # noqa: E731
-    mean = np.stack([_nanmean(pick(u), axis=0), _nanmean(pick(v), axis=0)])
-    return _coarsen(mean, u.lat, u.lon)
+    years = _years_of("merra2_u10m")
+    w = trendmaps.build_wind(years[(years >= start) & (years <= end)])
+    return (w["u"], w["v"]), w["frame_lat"], w["frame_lon"]
 
 
 @router.get("/wind")
@@ -255,7 +311,11 @@ def wind(start: int | None = None, end: int | None = None):
     if settings.data_mode != "live":
         raise HTTPException(404, "Wind vectors need DATA_MODE=live")
     start, end = _range("merra2_u10m", start, end)
-    (u, v), lat, lon = _wind(start, end)
+    pre = _pre("_wind")
+    if pre is not None and (start, end) == (int(pre["years"][0]), int(pre["years"][-1])):
+        u, v, lat, lon = pre["u"], pre["v"], pre["frame_lat"], pre["frame_lon"]
+    else:
+        (u, v), lat, lon = _wind(start, end)
     return {
         "start": start,
         "end": end,
@@ -347,6 +407,7 @@ def region(
     variable: str = Variable,
     start: int | None = None,
     end: int | None = None,
+    label: str | None = Query(None, max_length=60, description="name shown for a box"),
 ):
     # name: a preset (REGIONS) or, on live data, a Natural Earth id from /api/boundaries; or a box (west > east crosses 180)
     start, end = _range(variable, start, end)
@@ -355,7 +416,7 @@ def region(
     if name:
         label, frac, bbox = _fractions(name, ds)
     elif None not in box and south < north and west != east:
-        label, frac, bbox = "Custom area", dataset.box_fractions(ds.lat, ds.lon, *box), list(box)
+        label, frac, bbox = label or "Custom area", dataset.box_fractions(ds.lat, ds.lon, *box), list(box)
         name = "box"
     else:
         raise HTTPException(422, "Give a region name or a box with south < north and west != east")
@@ -406,17 +467,23 @@ def _ratio(region: float, world: float) -> float | None:
 
 
 @router.get("/grid")
-def grid(variable: str = Variable, start: int | None = None, end: int | None = None):
+def grid(request: Request, variable: str = Variable, start: int | None = None, end: int | None = None):
     start, end = _range(variable, start, end)
+    if _full(variable, start, end) is not None:
+        return _send(request, f"grid:{variable}", lambda: _grid_body(variable, start, end))
+    return _grid_body(variable, start, end)
+
+
+def _grid_body(variable: str, start: int, end: int) -> dict:
     slope, sig = _grid(variable, start, end)
-    ds = _ds(variable)
+    lat, lon = (dataset.LAT, dataset.LON) if _full(variable, start, end) is not None else (_ds(variable).lat, _ds(variable).lon)
     return {
         "start": start,
         "end": end,
         "span_years": end - start,
         "n_lat": int(slope.shape[0]),
         "n_lon": int(slope.shape[1]),
-        **_geometry(ds.lat, ds.lon),
+        **_geometry(lat, lon),
         "slope": _clean(slope, 4),
         "sig": sig.astype(int).ravel().tolist(),
     }
@@ -425,16 +492,19 @@ def grid(variable: str = Variable, start: int | None = None, end: int | None = N
 @router.get("/summary")
 def summary(variable: str = Variable, start: int | None = None, end: int | None = None):
     start, end = _range(variable, start, end)
-    ds = _ds(variable)
-    mask = _slice(variable, start, end)
     slope, sig = _grid(variable, start, end)
-    years = ds.years[mask].astype(np.float64)
-
-    mean = gridtrends.global_mean_series(ds.values[mask], ds.lat).astype(np.float64)
+    full = _full(variable, start, end)
+    if full is not None:
+        years, mean, lat = full["years"].astype(np.float64), full["value_mean"].astype(np.float64), dataset.LAT
+    else:
+        ds = _ds(variable)
+        mask = _slice(variable, start, end)
+        years, lat = ds.years[mask].astype(np.float64), ds.lat
+        mean = gridtrends.global_mean_series(ds.values[mask], ds.lat).astype(np.float64)
     res = _summary(years, mean)
 
     tested = np.isfinite(slope)
-    w = np.cos(np.deg2rad(ds.lat))[:, None] * tested  # cell area ~ cos(lat)
+    w = np.cos(np.deg2rad(lat))[:, None] * tested  # cell area ~ cos(lat)
     w = w / w.sum() if w.sum() else w
     warming, cooling = slope > 0, slope < 0
 
@@ -457,9 +527,9 @@ def summary(variable: str = Variable, start: int | None = None, end: int | None 
         "share_warming_significant": share(warming & sig),
         "share_cooling": share(cooling),
         "share_cooling_significant": share(cooling & sig),
-        "lat": [float(v) for v in ds.lat],
+        "lat": [float(v) for v in lat],
         "zonal_slope": _clean(zonal, 4),
-        "fastest_lat": float(ds.lat[int(np.nanargmax(zonal))]) if np.isfinite(zonal).any() else None,
+        "fastest_lat": float(lat[int(np.nanargmax(zonal))]) if np.isfinite(zonal).any() else None,
     }
 
 

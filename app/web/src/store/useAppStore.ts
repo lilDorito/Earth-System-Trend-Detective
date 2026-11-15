@@ -49,7 +49,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   regionName: null,
   boundary: null,
   regionType: null,
-  start: "1980-01-01",
+  start: "2000-01-01",
   end: today,
   mode: "trend",
   eventDate: "2022-02-24",

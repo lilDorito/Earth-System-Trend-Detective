@@ -22,6 +22,8 @@ export default function TrendMapPage() {
   const s = useTrendMapStore(
     useShallow((s) => ({
       meta: s.meta,
+      variable: s.variable,
+      variables: s.variables,
       wind: s.wind,
       loading: s.loading,
       region: s.region,
@@ -46,7 +48,8 @@ export default function TrendMapPage() {
   }, [s.load]);
 
   const { layer, style, edges, highsLows } = useTrendLayer();
-  const name = s.meta?.name ?? "trend data";
+  // the variable being loaded, not the one still on screen
+  const name = s.variables.find((v) => v.key === s.variable)?.name ?? s.meta?.name ?? "trend data";
   const texture = useEarthTexture();
   const area = useMemo(() => (s.regionTarget ? targetArea(s.regionTarget) : null), [s.regionTarget]);
   const outline = useOutline(area);

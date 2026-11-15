@@ -30,6 +30,7 @@ const fragmentShader = (bands: number) => `
   uniform bool crossfade;
   uniform float opacity;
   uniform float presence;
+  uniform float degPerPx; // degrees of arc per pixel where the globe faces the camera; changes only with zoom
   uniform vec3 palette[${bands * 2}]; // the "from" palette, then the "to" palette
   varying vec3 vDir;
 
@@ -44,14 +45,20 @@ const fragmentShader = (bands: number) => `
     return texture2D(field, (node + 0.5) / size);
   }
 
-  // dots on a lat/lon lattice that coarsens by powers of two as the globe zooms out, about 7 px apart
-  float stippleDots(vec2 lonLat) {
-    float px = max(length(fwidth(lonLat)), 1e-4);
-    float spacing = exp2(ceil(log2(px * 7.0)));
+  // one dot of a lat/lon lattice with this spacing, painted on the surface (about 1.3 px across at the centre)
+  float dotAt(vec2 lonLat, float spacing) {
     float c = max(cos(radians(lonLat.y)), 0.05);
     float sx = spacing * exp2(floor(log2(1.0 / c) + 0.5));
-    vec2 g = (fract(lonLat / vec2(sx, spacing)) - 0.5) * vec2(sx * c, spacing);
-    return 1.0 - smoothstep(0.8, 1.5, length(g) / px);
+    vec2 g = (fract(lonLat / vec2(sx, spacing) + 0.5) - 0.5) * vec2(sx * c, spacing);
+    return 1.0 - smoothstep(0.8, 1.5, length(g) / degPerPx);
+  }
+
+  // dots about 7 px apart that depend on zoom only, not on where a pixel sits on the globe; between two
+  // power-of-two spacings the extra dots fade, and the coarse lattice is a subset of the fine one
+  float stippleDots(vec2 lonLat) {
+    float level = log2(degPerPx * 7.0);
+    float fine = exp2(floor(level));
+    return max(dotAt(lonLat, fine * 2.0), dotAt(lonLat, fine) * (1.0 - fract(level)));
   }
 
   // cell: value, mask (1 shown, 0 muted), coverage (1 data, 0 none), significance
@@ -260,13 +267,14 @@ export default function FieldLayer({
         crossfade: { value: false },
         opacity: { value: 0.6 },
         presence: { value: 0 },
+        degPerPx: { value: 0.1 },
         palette: { value: Array.from({ length: BANDS * 2 }, () => new Vector3()) },
       },
     }),
     [],
   );
 
-  useFrame((_, delta) => {
+  useFrame(({ camera, size }, delta) => {
     const f = frames.current;
     if (!f) return;
     // a hitch (shader compile, tab switch) should not swallow a transition
@@ -308,6 +316,10 @@ export default function FieldLayer({
     u.crossfade.value = f.crossfade;
     u.opacity.value = opacity;
     u.presence.value = ease(p.value);
+    // the surface point nearest the camera is distance - 1 away
+    const fov = "fov" in camera ? ((camera.fov as number) * Math.PI) / 180 : 0.8;
+    const unitsPerPx = (2 * Math.max(camera.position.length() - 1, 0.01) * Math.tan(fov / 2)) / size.height;
+    u.degPerPx.value = (unitsPerPx * 180) / Math.PI;
   });
 
   // drawn before the Earth, so the depth test skips shading the globe underneath

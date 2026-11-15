@@ -22,8 +22,7 @@ export async function countryAt(lat: number, lon: number): Promise<Boundary | nu
   const all = await loadBoundaries();
   // smallest first: a small country inside a big one's box is checked before the big one
   const candidates = all.filter((b) => b.kind === "country" && inBox(b, lat, lon)).sort((a, b) => a.areaKm2 - b.areaKm2);
-  for (const country of candidates) {
-    if (inside(await loadOutline(country), lat, lon)) return country;
-  }
-  return null;
+  // outlines fetched together, not one after another
+  const outlines = await Promise.all(candidates.map((c) => loadOutline(c).catch(() => [])));
+  return candidates.find((_, i) => inside(outlines[i], lat, lon)) ?? null;
 }

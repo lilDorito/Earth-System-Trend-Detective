@@ -302,7 +302,8 @@ function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
   return null;
 }
 
-function Loading({ label }: { label: string }) {
+// centred on the globe, which the view shift moves clear of the panels
+function Loading({ label, shift }: { label: string; shift: { x: number; y: number } }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -311,7 +312,9 @@ function Loading({ label }: { label: string }) {
       transition={{ duration: 0.2 }}
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <div className="min-w-48 max-w-[min(20rem,calc(100%-2rem))] rounded-md border bg-card/90 px-4 py-3 font-mono text-[11px] uppercase leading-relaxed tracking-[0.06em] text-muted-foreground shadow-lg shadow-black/40 backdrop-blur">
+      <div
+        style={{ transform: `translate(${-shift.x}px, ${-shift.y}px)` }}
+        className="min-w-48 transition-transform duration-200 max-w-[min(20rem,calc(100%-2rem))] rounded-md border bg-card/90 px-4 py-3 font-mono text-[11px] uppercase leading-relaxed tracking-[0.06em] text-muted-foreground shadow-lg shadow-black/40 backdrop-blur">
         {label}
         <div className="mt-2 h-px overflow-hidden bg-border">
           <div className="h-full w-2/5 animate-scan bg-primary" />
@@ -408,7 +411,7 @@ export default function GlobeCanvas({
           !ready && "opacity-0",
         )}
       />
-      <AnimatePresence>{status && <Loading key={status} label={status} />}</AnimatePresence>
+      <AnimatePresence>{status && <Loading key={status} label={status} shift={viewShift} />}</AnimatePresence>
       {onBox && ready && (
         // what a click or drag on the globe does; shift-drag draws a box in either mode. Wide screens: a bar
         // centred in the space between the side panels; narrower: a thumb-reachable rail on the right edge, below

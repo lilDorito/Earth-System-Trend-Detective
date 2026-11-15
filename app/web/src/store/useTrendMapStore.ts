@@ -46,6 +46,13 @@ export function targetArea(target: RegionTarget): Area {
 }
 
 // the place a region target names for the insight endpoints: a Natural Earth id where there is one, else its box
+// the name shown while a region loads
+export function targetLabel(target: RegionTarget): string {
+  if (target.kind === "boundary") return boundaryLabel(target.boundary);
+  if (target.kind === "box") return target.name ?? "Custom area";
+  return REGIONS[target.name].label;
+}
+
 export function targetPlace(target: RegionTarget): InsightPlace {
   if (target.kind === "boundary") return { region: target.boundary.id };
   if (target.kind === "box") return { south: target.box.south, north: target.box.north, west: target.box.west, east: target.box.east };
@@ -79,6 +86,7 @@ type TrendMapState = {
 
   regionTarget: RegionTarget | null;
   region: TrendRegion | null;
+  regionLoading: boolean;
   focus: { lat: number; lon: number; distance: number; id: number } | null;
   regionError: string | null;
 
@@ -154,6 +162,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
 
   regionTarget: null,
   region: null,
+  regionLoading: false,
   focus: null,
   regionError: null,
 
@@ -247,7 +256,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   async setRegion(target) {
     const id = ++regionRequestId;
     if (!target) {
-      set({ regionTarget: null, region: null, regionError: null });
+      set({ regionTarget: null, region: null, regionError: null, regionLoading: false });
       return;
     }
     // picked from the list: fly there; drawn boxes are already in view
@@ -257,7 +266,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
       const center = target.kind === "boundary" ? target.boundary : boxCenter(bounds);
       set({ focus: { lat: center.lat, lon: center.lon, distance: fitDistance(bounds), id: Date.now() } });
     }
-    set({ regionTarget: target, regionError: null });
+    set({ regionTarget: target, regionError: null, regionLoading: true });
     const query =
       target.kind === "preset"
         ? { name: target.name }
@@ -266,9 +275,9 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
           : { box: target.box, label: target.name };
     try {
       const region = await api.trendRegion(get().variable, query);
-      if (id === regionRequestId) set({ region });
+      if (id === regionRequestId) set({ region, regionLoading: false });
     } catch (e) {
-      if (id === regionRequestId) set({ region: null, regionError: message(e) });
+      if (id === regionRequestId) set({ region: null, regionError: message(e), regionLoading: false });
     }
   },
 

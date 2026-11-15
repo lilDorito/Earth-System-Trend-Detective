@@ -29,7 +29,7 @@ import { WAKING_MESSAGE, useServerStatus } from "@/api/status";
 import { Panel } from "@/components/ui/panel";
 import { NARROW, useMedia } from "@/lib/useMedia";
 import { cn } from "@/lib/utils";
-import { targetArea, useTrendMapStore } from "@/store/useTrendMapStore";
+import { targetArea, targetLabel, useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
   const s = useTrendMapStore(
@@ -40,6 +40,7 @@ export default function TrendMapPage() {
       wind: s.wind,
       loading: s.loading,
       region: s.region,
+      regionLoading: s.regionLoading,
       regionTarget: s.regionTarget,
       setRegion: s.setRegion,
       focus: s.focus,
@@ -101,6 +102,7 @@ export default function TrendMapPage() {
   const notes: readonly (readonly ["busy" | "warn", string])[] = [
     ...(s.pointLoading && !s.selected ? [["busy", "loading cell"] as const] : []),
     ...(s.stationLoading && !s.station ? [["busy", "loading station"] as const] : []),
+    ...(s.regionLoading && !s.region && s.regionTarget ? [["busy", `loading ${targetLabel(s.regionTarget)}`] as const] : []),
     ...(s.pointError && !s.pointLoading ? [["warn", s.pointError] as const] : []),
     ...(s.stationError && !s.stationLoading ? [["warn", s.stationError] as const] : []),
   ];

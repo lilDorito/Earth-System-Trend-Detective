@@ -13,7 +13,8 @@ import Chart, { baseOption, palette, valueAxis } from "@/features/charts/Chart";
 import { usingMockData } from "@/api";
 import { formatP, formatSigned } from "@/lib/format";
 import { describeTrend } from "@/lib/summary";
-import { targetPlace, useTrendMapStore } from "@/store/useTrendMapStore";
+import { cn } from "@/lib/utils";
+import { targetLabel, targetPlace, useTrendMapStore } from "@/store/useTrendMapStore";
 import Insights from "./Insights";
 import { divergingColor, styleFor } from "./styles";
 
@@ -92,6 +93,8 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
   const style = styleFor(useTrendMapStore((s) => s.meta?.key));
   const meta = useTrendMapStore((s) => s.meta);
   const target = useTrendMapStore((s) => s.regionTarget);
+  // a newly picked area shows its name at once; the old numbers stay dimmed until the new ones arrive
+  const loading = useTrendMapStore((s) => s.regionLoading) && !!target;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && void setRegion(null);
@@ -114,11 +117,17 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
         <div className="flex items-center justify-between gap-2 px-4 py-3">
           <div>
             <Label>Region</Label>
-            <p className="text-sm font-medium">{region.label}</p>
-            <p className="font-mono text-[10px] text-muted-foreground">
-              {region.start} to {region.end}, {region.n_cells} grid {region.n_cells === 1 ? "cell" : "cells"}, area-weighted
-            </p>
-            {region.coverage != null && region.coverage < 0.9 && (
+            <p className="text-sm font-medium">{loading ? targetLabel(target) : region.label}</p>
+            {loading ? (
+              <div className="mt-1.5 h-px w-32 overflow-hidden bg-border">
+                <div className="h-full w-2/5 animate-scan bg-primary" />
+              </div>
+            ) : (
+              <p className="font-mono text-[10px] text-muted-foreground">
+                {region.start} to {region.end}, {region.n_cells} grid {region.n_cells === 1 ? "cell" : "cells"}, area-weighted
+              </p>
+            )}
+            {!loading && region.coverage != null && region.coverage < 0.9 && (
               <p className="mt-1 text-xs text-warning">Data covers {Math.round(region.coverage * 100)}% of this area</p>
             )}
           </div>
@@ -127,6 +136,7 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
           </Button>
         </div>
 
+        <div className={cn("transition-opacity duration-150", loading && "pointer-events-none opacity-40")}>
         <PanelSection className="space-y-2">
           <p className="flex flex-wrap items-baseline gap-x-2">
             <span className="whitespace-nowrap font-mono text-2xl font-medium tabular-nums">{formatSigned(region.total_change)} {units}</span>
@@ -184,6 +194,7 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
           <Label className="mb-2">{style.stripes ?? "Stripes"}, one bar per year</Label>
           <Stripes region={region} units={units} stops={style.change} />
         </PanelSection>
+        </div>
         {!usingMockData && meta && target && <Insights variable={meta.key} place={targetPlace(target)} />}
       </Panel>
     </motion.aside>

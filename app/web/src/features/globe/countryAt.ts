@@ -1,7 +1,7 @@
 // which country a point on the globe falls in: bounding boxes narrow it down, the outline decides
 
 import type { Boundary } from "@/api/types";
-import { loadBoundaries, loadOutline, type Ring } from "./boundaries";
+import { loadBoundaries, loadOutline, loadRegionLevel, type Ring } from "./boundaries";
 
 const inBox = (b: Boundary, lat: number, lon: number) =>
   lat >= b.south && lat <= b.north && (b.west <= b.east ? lon >= b.west && lon <= b.east : lon >= b.west || lon <= b.east);
@@ -16,6 +16,18 @@ export function inside(rings: Ring[], lat: number, lon: number) {
     }
   }
   return hit;
+}
+
+// the admin-1 region (oblast, state, province) of a country at a point, null when the country has none there
+export async function adminAt(country: Boundary, lat: number, lon: number): Promise<Boundary | null> {
+  const all = await loadRegionLevel();
+  const candidates = all
+    .filter((b) => b.country === country.country && inBox(b, lat, lon))
+    .sort((a, b) => a.areaKm2 - b.areaKm2);
+  for (const region of candidates) {
+    if (inside(await loadOutline(region), lat, lon)) return region;
+  }
+  return null;
 }
 
 export async function countryAt(lat: number, lon: number): Promise<Boundary | null> {

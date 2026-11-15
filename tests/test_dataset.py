@@ -13,7 +13,7 @@ from app.api import trendmap
 from app.api.main import app
 from src import dataset, pipeline
 from src.config import settings
-from src.contracts import BBox, Point, Region
+from src.contracts import BBox, Point, Region, Regions
 
 YEARS = range(2000, 2012)
 CELLS = [(50.5, 30.5), (50.5, 31.5), (46.5, 30.5)]  # land around Kyiv and Odesa; everything else has no data
@@ -46,12 +46,25 @@ def local(tmp_path, monkeypatch):
     annual.loc[(annual.year == 2003) & (annual.lat == 46.5), "months"] = 5
     pq.write_table(pa.Table.from_pandas(annual, preserve_index=False), tmp_path / "annual" / "fake_t2m.parquet")
     (tmp_path / "regions").mkdir()
+    base = dict(country="tst", country_name="Testland", lat=50.5, lon=31.0, south=50.0, north=51.0, west=30.0, east=31.6, cells=3, area_km2=12000)
     pd.DataFrame(
-        [dict(id="tst", name="Testland", kind="country", country="tst", country_name="Testland", type="Country",
-              lat=50.5, lon=31.0, south=50.0, north=51.0, west=30.0, east=31.6, cells=3, area_km2=12000)]
+        [
+            dict(base, id="tst", name="Testland", kind="country", type="Country"),
+            # two regions of the same area: they share the cell at 31.5, half and half
+            dict(base, id="tst-a", name="Alpha", kind="admin1", type="Oblast"),
+            dict(base, id="tst-b", name="Beta", kind="admin1", type="Oblast"),
+            dict(base, id="oth", name="Otherland", country="oth", country_name="Otherland", kind="country", type="Country"),
+        ]
     ).to_parquet(tmp_path / "regions" / "index.parquet")
     # the third cell has no data, so a quarter-ish of the region is uncovered
-    pd.DataFrame(dict(id="tst", lat=[50.5, 50.5, 50.5], lon=[30.5, 31.5, 32.5], frac=[1.0, 0.5, 0.5])).astype(
+    pd.DataFrame(
+        dict(
+            id=["tst", "tst", "tst", "tst-a", "tst-a", "tst-b", "tst-b", "oth"],
+            lat=[50.5, 50.5, 50.5, 50.5, 50.5, 50.5, 50.5, 46.5],
+            lon=[30.5, 31.5, 32.5, 30.5, 31.5, 31.5, 32.5, 30.5],
+            frac=[1.0, 0.5, 0.5, 1.0, 0.25, 0.25, 0.5, 1.0],
+        )
+    ).astype(
         {"lat": "float32", "lon": "float32", "frac": "float32"}
     ).to_parquet(tmp_path / "regions" / "weights.parquet")
     pd.DataFrame(
@@ -104,6 +117,33 @@ def test_area_mean_and_source(local, monkeypatch):
     assert region.meta.coverage == pytest.approx(0.75, abs=0.01)
     with pytest.raises(Exception, match="Unknown region"):
         pipeline.analyze("air_temperature", Region(id="nope"), date(2000, 1, 1), date(2011, 6, 1))
+
+
+def test_several_regions_make_one_area(local, monkeypatch):
+    from src import catalog
+
+    variable = catalog.get_variable("air_temperature").model_copy(update={"variable_id": "fake_t2m"})
+    monkeypatch.setitem(catalog.variables(), "air_temperature", variable)
+    start, end = date(2000, 1, 1), date(2011, 6, 1)
+    # the shared cell adds up to the whole cell, so the two regions cover what the country does
+    cells = dataset.regions_cells(["tst-a", "tst-b", "tst-a"])
+    assert len(cells) == 3 and cells.set_index("lon")["frac"].to_dict() == pytest.approx({30.5: 1.0, 31.5: 0.5, 32.5: 0.5})
+    both, _, result = pipeline.analyze("air_temperature", Regions(ids=["tst-a", "tst-b"]), start, end)
+    assert both.meta.region_name == "Alpha, Beta" and both.meta.cells == 2
+    assert both.meta.coverage == pytest.approx(0.75, abs=0.01)
+    assert result.slope_per_decade == pytest.approx(0.5, abs=0.05)
+    # one region is the same as asking for it alone; the second adds Odesa's cell to the mean
+    alone, _, _ = pipeline.analyze("air_temperature", Regions(ids=["tst-a"]), start, end)
+    single, _, _ = pipeline.analyze("air_temperature", Region(id="tst-a"), start, end)
+    assert alone.df["value"].to_list() == pytest.approx(single.df["value"].to_list())
+    with_other, _, _ = pipeline.analyze("air_temperature", Regions(ids=["tst-a", "oth"]), start, end)
+    assert with_other.meta.cells == 3
+    # a country together with its own regions would count them twice
+    with pytest.raises(ValueError, match="inside a selected country"):
+        pipeline.analyze("air_temperature", Regions(ids=["tst", "tst-a"]), start, end)
+    with pytest.raises(Exception, match="Unknown region"):
+        pipeline.analyze("air_temperature", Regions(ids=["tst-a", "nope"]), start, end)
+    assert dataset.regions_label(["tst-a", "tst-b", "tst", "oth"], shown=2) == "Alpha, Beta and 2 more"
 
 
 def test_box_fractions():

@@ -75,21 +75,62 @@ export function searchBoundaries(all: Boundary[], query: string, limit = 8): Bou
     .map(([, b]) => b);
 }
 
+// the data is a 1 degree grid, so regions far smaller than a cell (Moldova's or Latvia's districts) have no
+// trend of their own: they are not drawn or picked, and a click falls back to the region or country above
+const CELL_KM2 = 111.195 ** 2; // one square degree at the equator
+export const MIN_CELL_SHARE = 0.25; // smallest area worth a region, as a share of a cell at its latitude
+
+export const tooSmallForGrid = (b: Pick<Boundary, "kind" | "areaKm2" | "lat">) =>
+  b.kind === "admin1" && b.areaKm2 < MIN_CELL_SHARE * CELL_KM2 * Math.cos((b.lat * Math.PI) / 180);
+
+// the regions worth drawing and picking: a country whose regions are mostly smaller than a cell (Latvia, Moldova)
+// is not split at all; elsewhere the odd tiny one (a city state) is left out
+const MAX_SMALL_SHARE = 0.5;
+let levelCached: Promise<Boundary[]> | null = null;
+
+export function loadRegionLevel(): Promise<Boundary[]> {
+  levelCached ??= loadBoundaries()
+    .then((all) => {
+      const counts = new Map<string, { all: number; small: number }>();
+      for (const b of all) {
+        if (b.kind !== "admin1") continue;
+        const c = counts.get(b.country) ?? { all: 0, small: 0 };
+        c.all++;
+        if (tooSmallForGrid(b)) c.small++;
+        counts.set(b.country, c);
+      }
+      return all.filter((b) => {
+        if (b.kind !== "admin1" || tooSmallForGrid(b)) return false;
+        const c = counts.get(b.country);
+        return !c || c.small / c.all <= MAX_SMALL_SHARE;
+      });
+    })
+    .catch((e) => {
+      levelCached = null;
+      throw e;
+    });
+  return levelCached;
+}
+
 export function boundaryLabel(b: Boundary): string {
   return b.kind === "country" ? b.name : `${b.name}, ${b.countryName}`;
 }
 
 const outlinesCached = new Map<string, Promise<Record<string, Ring[]>>>();
 
-// one file per country holds the country and its admin-1 regions
-export function loadOutline(boundary: Pick<Boundary, "id" | "country">): Promise<Ring[]> {
-  let file = outlinesCached.get(boundary.country);
+// one file per country holds the country and its admin-1 regions, keyed by id
+export function loadCountryOutlines(country: string): Promise<Record<string, Ring[]>> {
+  let file = outlinesCached.get(country);
   if (!file) {
-    file = fetchJson<Record<string, Ring[]>>(`outlines/${boundary.country}.json`);
-    file.catch(() => outlinesCached.delete(boundary.country));
-    outlinesCached.set(boundary.country, file);
+    file = fetchJson<Record<string, Ring[]>>(`outlines/${country}.json`);
+    file.catch(() => outlinesCached.delete(country));
+    outlinesCached.set(country, file);
   }
-  return file.then((outlines) => outlines[boundary.id] ?? []);
+  return file;
+}
+
+export function loadOutline(boundary: Pick<Boundary, "id" | "country">): Promise<Ring[]> {
+  return loadCountryOutlines(boundary.country).then((outlines) => outlines[boundary.id] ?? []);
 }
 
 export function boxRings(box: Pick<BBox, "south" | "north" | "west" | "east">): Ring[] {

@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 import numpy as np
 import pandas as pd
 
-from ..contracts import BBox, Location, Point, Region, Series, SeriesMeta, VariableInfo
+from ..contracts import BBox, Location, Point, Region, Regions, Series, SeriesMeta, VariableInfo
 
 # (base, seasonal amplitude, trend per decade, noise sd)
 PROFILES = {
@@ -25,7 +25,12 @@ class MockSource:
 
     def fetch(self, variable: VariableInfo, location: Location, start: date, end: date) -> Series:
         lat, lon = _center(location)
-        place = location.id if isinstance(location, Region) else f"{lat:.2f}|{lon:.2f}"
+        if isinstance(location, Region):
+            place = location.id
+        elif isinstance(location, Regions):
+            place = "+".join(sorted(location.ids))
+        else:
+            place = f"{lat:.2f}|{lon:.2f}"
         seed = int(hashlib.sha1(f"{variable.key}|{place}".encode()).hexdigest()[:8], 16)
         rng = np.random.default_rng(seed)
         base, amp, trend, noise = PROFILES.get(variable.key) or _from_range(variable.typical_range)

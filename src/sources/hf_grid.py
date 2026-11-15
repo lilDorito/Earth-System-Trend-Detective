@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 import pandas as pd
 
 from .. import dataset
-from ..contracts import BBox, Location, Point, Series, SeriesMeta, VariableInfo
+from ..contracts import BBox, Location, Point, Regions, Series, SeriesMeta, VariableInfo
 from .base import SourceError
 
 
@@ -21,6 +21,9 @@ class HfGridSource:
             else:
                 if isinstance(location, BBox):
                     area = dataset.area_series(key, location.south, location.north, location.west, location.east)
+                elif isinstance(location, Regions):
+                    area = dataset.regions_series(key, location.ids)
+                    region_name = dataset.regions_label(location.ids)
                 else:
                     area = dataset.region_series(key, location.id)
                     region_name = dataset.region(location.id)["name"]

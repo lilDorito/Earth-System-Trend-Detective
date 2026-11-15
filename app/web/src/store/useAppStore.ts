@@ -13,6 +13,7 @@ type AppState = {
   location: Location | null;
   regionName: string | null;
   boundary: Boundary | null; // the picked region when location is one
+  boundaries: Boundary[]; // every picked region, when several are averaged as one area
   regionType: string | null;
   start: string;
   end: string;
@@ -30,6 +31,8 @@ type AppState = {
   clearLocation: () => void;
   pickRegion: (region: Region) => void;
   pickBoundary: (boundary: Boundary) => void;
+  toggleBoundary: (boundary: Boundary) => void; // adds the region to the selection, or takes it out
+  removeBoundary: (id: string) => void;
   setBox: (box: BBox) => void;
   setRegionType: (type: string | null) => void;
   setPeriod: (start: string, end: string) => void;
@@ -40,6 +43,21 @@ type AppState = {
   run: () => Promise<void>;
 };
 
+const MAX_SELECTED = 40;
+const NAMES_SHOWN = 3;
+
+// a country and its own regions overlap, so only one of the two kinds stays
+const overlaps = (a: Boundary, b: Boundary) => a.country === b.country && a.kind !== b.kind;
+
+// what the selection stands for: nothing, one region, or several as one area
+function selection(list: Boundary[]) {
+  if (list.length === 0) return { location: null, regionName: null, boundary: null, boundaries: list };
+  if (list.length === 1) return { location: { type: "region" as const, id: list[0].id }, regionName: boundaryLabel(list[0]), boundary: list[0], boundaries: list };
+  const names = list.map((b) => b.name);
+  const regionName = names.length <= NAMES_SHOWN ? names.join(", ") : `${names.slice(0, NAMES_SHOWN).join(", ")} and ${names.length - NAMES_SHOWN} more`;
+  return { location: { type: "regions" as const, ids: list.map((b) => b.id) }, regionName, boundary: null, boundaries: list };
+}
+
 const today = new Date().toISOString().slice(0, 10);
 let runId = 0;
 
@@ -48,6 +66,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   location: null,
   regionName: null,
   boundary: null,
+  boundaries: [],
   regionType: null,
   start: "2000-01-01",
   end: today,
@@ -61,10 +80,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
 
   setVariable: (variableKey) => set({ variableKey, error: null }),
-  setLocation: (location, regionName = null) => set({ location, regionName, boundary: null, error: null }),
+  setLocation: (location, regionName = null) => set({ location, regionName, boundary: null, boundaries: [], error: null }),
   clearLocation() {
     runId++;
-    set({ location: null, regionName: null, boundary: null, response: null, loading: false, error: null });
+    set({ location: null, regionName: null, boundary: null, boundaries: [], response: null, loading: false, error: null });
   },
   pickRegion(region) {
     const center = locationCenter(region.location);
@@ -73,6 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       location: region.location,
       regionName: region.name,
       boundary: null,
+      boundaries: [],
       focus: center && { ...center, distance, id: Date.now() },
       error: null,
     });
@@ -82,10 +102,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       location: { type: "region", id: boundary.id },
       regionName: boundaryLabel(boundary),
       boundary,
+      boundaries: [boundary],
       focus: { lat: boundary.lat, lon: boundary.lon, distance: fitDistance(boundary), id: Date.now() },
       error: null,
     }),
-  setBox: (box) => set({ location: box, regionName: null, boundary: null, error: null }),
+  toggleBoundary(boundary) {
+    const current = get().boundaries;
+    const next = current.some((b) => b.id === boundary.id)
+      ? current.filter((b) => b.id !== boundary.id)
+      : [...current.filter((b) => !overlaps(b, boundary)), boundary].slice(-MAX_SELECTED);
+    if (next.length === 0) return get().clearLocation();
+    set({ ...selection(next), error: null });
+  },
+  removeBoundary(id) {
+    const next = get().boundaries.filter((b) => b.id !== id);
+    if (next.length === 0) return get().clearLocation();
+    set({ ...selection(next), error: null });
+  },
+  setBox: (box) => set({ location: box, regionName: null, boundary: null, boundaries: [], error: null }),
   setRegionType: (regionType) => set({ regionType }),
   setPeriod: (start, end) => set({ start, end, error: null }),
   setMode: (mode) => set({ mode, error: null }),

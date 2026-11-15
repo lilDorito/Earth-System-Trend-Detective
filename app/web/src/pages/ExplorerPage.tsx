@@ -5,26 +5,28 @@ import { useShallow } from "zustand/react/shallow";
 import Results from "@/features/explorer/Results";
 import Wizard from "@/features/explorer/Wizard";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
-import { countryAt } from "@/features/globe/countryAt";
+import { areaAt } from "@/features/globe/areaAt";
 import StationLayer from "@/features/globe/StationLayer";
 import StationToggle from "@/features/stations/StationToggle";
 import { plainStyle, stationLabel } from "@/features/stations/style";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
-import { useOutline, type Area } from "@/features/globe/useOutline";
+import { useOutline, useOutlines, type Area } from "@/features/globe/useOutline";
 import { useAppStore } from "@/store/useAppStore";
 import { useStationStore } from "@/store/useStationStore";
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 export default function ExplorerPage() {
-  const { location, boundary, focus, setLocation, setBox, pickBoundary, clearLocation } = useAppStore(
+  const { location, boundary, boundaries, focus, setLocation, setBox, pickBoundary, toggleBoundary, clearLocation } = useAppStore(
     useShallow((s) => ({
       location: s.location,
       boundary: s.boundary,
+      boundaries: s.boundaries,
       focus: s.focus,
       setLocation: s.setLocation,
       setBox: s.setBox,
       pickBoundary: s.pickBoundary,
+      toggleBoundary: s.toggleBoundary,
       clearLocation: s.clearLocation,
     })),
   );
@@ -34,7 +36,11 @@ export default function ExplorerPage() {
     if (location?.type === "region" && boundary) return { kind: "region", boundary };
     return null;
   }, [location, boundary]);
-  const outline = useOutline(area);
+  // several regions at once are one outline made of all of theirs
+  const several = location?.type === "regions";
+  const singleOutline = useOutline(area);
+  const manyOutline = useOutlines(several ? boundaries : []);
+  const outline = several ? manyOutline : singleOutline;
   const stationsOn = useStationStore((s) => s.explorerOn);
   const stations = useStationStore((s) => s.lists[s.explorerElement]);
   const stationStyle = useMemo(() => (stations ? plainStyle(stations) : null), [stations]);
@@ -58,7 +64,11 @@ export default function ExplorerPage() {
           onPick={(lat, lon, name) => setLocation({ type: "point", lat: round(lat), lon: round(lon) }, name ?? null)}
           onClear={clearLocation}
           onBox={setBox}
-          onCountry={(lat, lon) => void countryAt(lat, lon).then((b) => b && pickBoundary(b))}
+          hoverArea={(lat, lon, zoomed) => areaAt(lat, lon, { zoomed, seas: false })}
+          multiSelect
+          onCountry={(lat, lon, zoomed, multi) =>
+            void areaAt(lat, lon, { zoomed, seas: false }).then((b) => b && (multi ? toggleBoundary(b) : pickBoundary(b)))
+          }
         >
           {stations && stationStyle && (
             <StationLayer

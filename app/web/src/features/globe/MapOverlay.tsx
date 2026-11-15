@@ -388,7 +388,7 @@ export default function MapOverlay({ labels, onPick, onClear, marker, onReady, s
   return (
     <>
       <Borders positions={countries.coasts} width={1} opacity={0.5} />
-      <Borders positions={countries.borders} width={1.3} opacity={0.8} />
+      <Borders positions={countries.borders} width={1.9} opacity={0.95} />
       {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} onClear={clearRef} marker={marker} snap={snap} />}
     </>
   );

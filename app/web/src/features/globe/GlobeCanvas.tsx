@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
-import { AdditiveBlending, BackSide, Quaternion, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
@@ -83,8 +83,47 @@ function Atmosphere() {
 // and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as the globe turns
 const SECRET_STAR_AT: [number, number, number] = [16.2, -50.6, -78.8];
 
-function SecretStar() {
+// tapping it opens the full picture. The star is a few pixels wide, so a short tap anywhere within a fingertip of
+// where it is on screen counts, unless the Earth is in front of it. Worked out in screen space on each tap: the
+// 3D hit test does not pick up a transparent sprite reliably
+const SECRET_STAR_HIT_PX = 24;
+
+function SecretStar({ onOpen }: { onOpen: () => void }) {
   const invalidate = useThree((s) => s.invalidate);
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const star = new Vector3(...SECRET_STAR_AT);
+    const onScreen = new Vector3();
+    const sightLine = new Ray();
+    let down: { x: number; y: number } | null = null;
+    const press = (e: PointerEvent) => void (down = { x: e.clientX, y: e.clientY });
+    // on the click, not the pointer-up: the click that follows a tap would land on the picture just opened and close it
+    const release = (e: MouseEvent) => {
+      const start = down;
+      down = null;
+      if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_THRESHOLD_PX) return; // a drag
+      onScreen.copy(star).project(camera);
+      if (onScreen.z > 1) return; // behind the camera
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + ((onScreen.x + 1) / 2) * rect.width;
+      const y = rect.top + ((1 - onScreen.y) / 2) * rect.height;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > SECRET_STAR_HIT_PX) return;
+      sightLine.set(camera.position, star.clone().sub(camera.position).normalize());
+      if (sightLine.intersectsSphere(UNIT_SPHERE)) return; // hidden behind the Earth
+      openRef.current();
+    };
+    el.addEventListener("pointerdown", press);
+    el.addEventListener("click", release);
+    return () => {
+      el.removeEventListener("pointerdown", press);
+      el.removeEventListener("click", release);
+    };
+  }, [gl, camera]);
   const [texture, setTexture] = useState<Texture | null>(null);
   useEffect(() => {
     let active = true;
@@ -375,6 +414,7 @@ export default function GlobeCanvas({
   const labels = useRef<HTMLDivElement>(null);
   const snap = useRef(null) as CitySnap;
   const [mapReady, setMapReady] = useState(false);
+  const [secretOpen, setSecretOpen] = useState(false);
   const [tool, setTool] = useState<"point" | "box" | "country">("point");
   // in country mode a click (also on a city label) selects the country there instead of a point
   const pick: PickHandler | undefined = tool === "country" && onCountry ? (lat, lon) => onCountry(lat, lon) : onPick;
@@ -405,7 +445,7 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <SecretStar />
+        <SecretStar onOpen={() => setSecretOpen(true)} />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}
@@ -510,6 +550,33 @@ export default function GlobeCanvas({
       >
         {hint}
       </div>
+      <AnimatePresence>
+        {secretOpen && (
+          // the picture behind the secret star; a tap anywhere (or Escape) closes it
+          <motion.button
+            type="button"
+            aria-label="Close picture"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setSecretOpen(false)}
+            onKeyDown={(e) => e.key === "Escape" && setSecretOpen(false)}
+            autoFocus
+            className="fixed inset-0 z-50 grid cursor-pointer place-items-center bg-black/80 p-4 backdrop-blur-sm"
+          >
+            <motion.img
+              src="/textures/goyz.jpg"
+              alt="The team, as astronauts on the Moon"
+              initial={{ scale: 0.6 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.6 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+              className="max-h-[85vh] w-auto max-w-full rounded-lg shadow-2xl shadow-black/60"
+            />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </>
   );
 }

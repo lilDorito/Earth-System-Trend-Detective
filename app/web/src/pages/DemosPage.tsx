@@ -101,7 +101,7 @@ export default function DemosPage() {
           <h2 className="mb-1 mt-12 text-xl font-semibold tracking-tight">On the trend map</h2>
           <p className="mb-4 max-w-xl text-sm text-muted-foreground">
             Global questions. Each opens the map on a place and variable; the panel on the right writes the conclusion from the
-            data and checks whether it can be trusted.
+            data.
           </p>
           <ul className="divide-y border-y">
             {MAP_CASES.map((c) => (

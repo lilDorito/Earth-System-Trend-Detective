@@ -1,4 +1,4 @@
-// insight sections of the point and region panels: trust checks, significance, what else changes there
+// insight sections of the point and region panels: significance, what else changes there
 
 import { useEffect, useState } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
@@ -8,7 +8,7 @@ import type { Diagnosis, InsightPlace, Scan } from "@/api/types";
 import { Label } from "@/components/ui/label";
 import { PanelSection } from "@/components/ui/panel";
 import Chart, { baseOption, palette } from "@/features/charts/Chart";
-import { formatNumber, formatP, formatSigned } from "@/lib/format";
+import { formatP, formatSigned } from "@/lib/format";
 import { plainName } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
@@ -36,65 +36,6 @@ function useLoad<T>(key: string | null, load: () => Promise<T>): Loaded<T> {
 }
 
 const placeKey = (place: InsightPlace) => JSON.stringify(place);
-
-function Check({ tone, title, children }: { tone: "good" | "warn" | "neutral"; title: string; children: React.ReactNode }) {
-  const mark = { good: "✓", warn: "!", neutral: "·" }[tone];
-  return (
-    <li className="flex gap-2.5">
-      <span
-        className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-semibold",
-          tone === "good" && "bg-success/15 text-success",
-          tone === "warn" && "bg-warning/15 text-warning",
-          tone === "neutral" && "bg-muted text-muted-foreground",
-        )}
-      >
-        {mark}
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm">{title}</p>
-        <p className="text-xs leading-snug text-muted-foreground">{children}</p>
-      </div>
-    </li>
-  );
-}
-
-function TrustChecks({ d }: { d: Diagnosis }) {
-  const shifted = d.robust.shifted;
-  const range = shifted.length
-    ? `${formatSigned(Math.min(...shifted.map((s) => s.slope)) * 10)} to ${formatSigned(Math.max(...shifted.map((s) => s.slope)) * 10)}`
-    : "";
-  return (
-    <ul className="space-y-2.5">
-      {d.agreement && (
-        <Check tone={d.agreement.agree ? "good" : "warn"} title={d.agreement.agree ? "Independent product agrees" : "Independent product disagrees"}>
-          {plainName(d.agreement.name)} ({d.agreement.name.match(/\(([^)]+)\)/)?.[1] ?? "other product"}): {formatSigned(d.agreement.slope_decade)}{" "}
-          against {formatSigned(d.agreement.own_slope_decade)} {d.units} / decade over the same cells
-          {d.agreement.ratio && !d.agreement.agree && Math.sign(d.agreement.ratio) > 0
-            ? `, ${formatNumber(Math.max(d.agreement.ratio, 1 / d.agreement.ratio))}x apart`
-            : ""}
-          .
-        </Check>
-      )}
-      <Check
-        tone={d.jump.likely ? "warn" : "good"}
-        title={d.jump.likely ? `Looks like a jump around ${d.jump.year}` : "A steady trend, not a jump"}
-      >
-        {d.jump.likely
-          ? `One shift of ${formatSigned(d.jump.shift)} ${d.units} fits the years better than a straight line. A new instrument or model change can do that.`
-          : "A straight line fits the years better than a single shift."}
-      </Check>
-      <Check tone={d.robust.stable ? "good" : "warn"} title={d.robust.stable ? "Holds when the start year moves" : "Depends on the start year"}>
-        Starting 1-{shifted.length} years later gives {range} {d.units} / decade.
-      </Check>
-      {d.enso && (
-        <Check tone={d.enso.explained > 0.2 ? "warn" : "neutral"} title={`El Niño explains ${Math.round(d.enso.explained * 100)}% of the ups and downs`}>
-          With ENSO accounted for the trend is {formatSigned(d.enso.trend_without_enso)} instead of {formatSigned(d.enso.trend)} {d.units} / decade.
-        </Check>
-      )}
-    </ul>
-  );
-}
 
 function Growth({ d }: { d: Diagnosis }) {
   const option: EChartsOption = {
@@ -261,15 +202,9 @@ export default function Insights({ variable, place }: { variable: string; place:
   const scan = useLoad(key, () => api.insightScan(place));
   return (
     <>
-      <PanelSection className="space-y-3">
-        <Label>Can we trust it?</Label>
-        {diagnosis.data ? <TrustChecks d={diagnosis.data} /> : <Pending loading={diagnosis.loading} error={diagnosis.error} />}
+      <PanelSection>
+        {diagnosis.data ? <Significance d={diagnosis.data} /> : <Pending loading={diagnosis.loading} error={diagnosis.error} />}
       </PanelSection>
-      {diagnosis.data && (
-        <PanelSection>
-          <Significance d={diagnosis.data} />
-        </PanelSection>
-      )}
       <PanelSection className="space-y-2">
         <Label>Everything changing here</Label>
         {scan.data ? <ScanList scan={scan.data} current={variable} /> : <Pending loading={scan.loading} error={scan.error} />}

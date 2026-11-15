@@ -29,7 +29,7 @@ export const MAP_CASES: MapCase[] = [
     id: "arctic_warming",
     title: "Is the Arctic warming faster than the rest of the world?",
     story: "Air temperature trends north of 66.5°N, compared with the global mean.",
-    look: "The region panel gives the ratio to the world average; 'Can we trust it?' checks it against GLDAS.",
+    look: "The region panel gives the ratio to the world average.",
     variable: "merra2_t2m",
     place: { preset: "arctic" },
   },

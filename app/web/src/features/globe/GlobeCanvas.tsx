@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crosshair, SquareDashed, X } from "lucide-react";
+import { Crosshair, Flag, SquareDashed, X } from "lucide-react";
 import type { BBox } from "@/api/types";
 import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
@@ -34,6 +34,7 @@ type GlobeCanvasProps = {
   onPick?: PickHandler;
   onClear?: () => void;
   onBox?: (box: BBox) => void;
+  onCountry?: (lat: number, lon: number) => void; // country mode: a click picks the country under it
   outline?: Ring[] | null;
   hint?: string;
   touchHint?: string; // shown instead of hint on touch screens
@@ -300,6 +301,7 @@ export default function GlobeCanvas({
   onPick,
   onClear,
   onBox,
+  onCountry,
   outline = null,
   hint: mouseHint = "",
   touchHint,
@@ -311,7 +313,9 @@ export default function GlobeCanvas({
   const labels = useRef<HTMLDivElement>(null);
   const snap = useRef(null) as CitySnap;
   const [mapReady, setMapReady] = useState(false);
-  const [boxTool, setBoxTool] = useState(false);
+  const [tool, setTool] = useState<"point" | "box" | "country">("point");
+  // in country mode a click (also on a city label) selects the country there instead of a point
+  const pick: PickHandler | undefined = tool === "country" && onCountry ? (lat, lon) => onCountry(lat, lon) : onPick;
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const hint = (touch && touchHint) || mouseHint;
   const hasSelection = !!marker || !!outline?.length;
@@ -336,13 +340,13 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <Earth texture={texture} onPick={onPick} onClear={onClear} onHover={onHover} snap={snap} />
+        <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}
         {outline && outline.length > 0 && <Outline rings={outline} />}
         {onBox && (
           <BoxDraw
-            active={boxTool}
+            active={tool === "box"}
             onBox={onBox}
           />
         )}
@@ -359,7 +363,7 @@ export default function GlobeCanvas({
           minDistance={1.12}
           maxDistance={7}
         />
-        <MapOverlay labels={labels} onPick={onPick} onClear={onClear} marker={marker} snap={snap} onReady={() => setMapReady(true)} />
+        <MapOverlay labels={labels} onPick={pick} onClear={onClear} marker={marker} snap={snap} onReady={() => setMapReady(true)} />
       </Canvas>
       <div
         ref={labels}
@@ -379,20 +383,21 @@ export default function GlobeCanvas({
           className="flex flex-col items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:flex-row"
         >
           {([
-            [false, Crosshair, "Point"],
-            [true, SquareDashed, "Box"],
-          ] as const).map(([box, Icon, label]) => (
+            ["point", Crosshair, "Point", "Click to pick a point"],
+            ["box", SquareDashed, "Box", "Drag on the globe to draw a box (shift-drag works in point mode too)"],
+            ...(onCountry ? ([["country", Flag, "Country", "Click on the globe to select that country"]] as const) : []),
+          ] as const).map(([mode, Icon, label, title]) => (
             <button
               key={label}
               type="button"
               role="radio"
-              aria-checked={boxTool === box}
-              onClick={() => setBoxTool(box)}
+              aria-checked={tool === mode}
+              onClick={() => setTool(mode)}
               aria-label={label}
-              title={box ? "Drag on the globe to draw a box (shift-drag works in point mode too)" : "Click to pick a point"}
+              title={title}
               className={cn(
                 "flex size-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-sm font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-7 sm:w-auto sm:flex-row sm:gap-1.5 sm:px-2.5 sm:text-[11px]",
-                boxTool === box && "bg-accent text-foreground",
+                tool === mode && "bg-accent text-foreground",
               )}
             >
               <Icon className="size-4 sm:size-3.5" />

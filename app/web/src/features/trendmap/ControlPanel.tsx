@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { REGION_NAMES, shortRegionLabel } from "@/api/regions";
 import type { TrendVariable } from "@/api/types";
-import RegionSearch from "@/components/RegionSearch";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -132,9 +130,7 @@ export default function ControlPanel() {
       setOpacity: s.setOpacity,
       onlySignificant: s.onlySignificant,
       view: s.view,
-      regionTarget: s.regionTarget,
       regionError: s.regionError,
-      setRegion: s.setRegion,
       hasSelection: s.selected !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
@@ -247,31 +243,11 @@ export default function ControlPanel() {
 
           {s.showTrend && <Legend />}
 
-          <PanelSection>
-            <Label className="mb-2">Region analytics</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {REGION_NAMES.map((name) => {
-                const on = s.regionTarget?.kind === "preset" && s.regionTarget.name === name;
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => void s.setRegion(on ? null : { kind: "preset", name })}
-                    className={cn(
-                      "h-6 pointer-coarse:h-9 pointer-coarse:px-3 cursor-pointer rounded-sm border border-input px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      on && "bg-accent text-foreground",
-                    )}
-                  >
-                    {shortRegionLabel(name)}
-                  </button>
-                );
-              })}
-            </div>
-            <RegionSearch onPick={(boundary) => void s.setRegion({ kind: "boundary", boundary })} className="mt-2" />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">or draw one with the Box tool on the globe</p>
-            {s.regionError && <p className="mt-2 text-xs text-warning">{s.regionError}</p>}
-          </PanelSection>
+          {s.regionError && (
+            <PanelSection>
+              <p className="text-xs text-warning">{s.regionError}</p>
+            </PanelSection>
+          )}
 
           <PanelSection>
             {s.loading || !s.globalMean ? (

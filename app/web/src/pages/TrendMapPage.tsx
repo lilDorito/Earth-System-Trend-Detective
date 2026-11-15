@@ -7,6 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
+import { countryAt } from "@/features/globe/countryAt";
 import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline } from "@/features/globe/useOutline";
@@ -69,6 +70,9 @@ export default function TrendMapPage() {
         // clears the picked cell first, then the region
         onClear={() => (s.picked ? s.clearSelection() : void s.setRegion(null))}
         onBox={(box) => void s.setRegion({ kind: "box", box })}
+        onCountry={(lat, lon) =>
+          void countryAt(lat, lon).then((boundary) => boundary && s.setRegion({ kind: "boundary", boundary }))
+        }
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}

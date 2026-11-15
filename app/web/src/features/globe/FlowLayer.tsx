@@ -10,13 +10,14 @@ import type { FlowField, GridGeometry } from "@/api/types";
 
 const COUNT = 6000;
 const TRAIL = 10; // points per streak
+const KEPT = TRAIL + 1; // stored per particle: TRAIL steps of history, then the live head
 const STEP_S = 1 / 15; // a new trail point this often
 // drift in degrees per second for one unit of speed (wind in m/s, currents in cm/s), the speed drawn at full
 // brightness, the faintest a moving streak gets, line width in px and colour; currents are some twenty times
 // slower and mostly weak, so they move faster, start brighter and draw thicker to read alike
 const LOOK: Record<FlowField, { drift: number; full: number; floor: number; width: number; color: [number, number, number] }> = {
   wind: { drift: 0.6, full: 6, floor: 0.4, width: 1.2, color: [0.92, 0.95, 1] },
-  current: { drift: 0.13, full: 20, floor: 0.6, width: 2.4, color: [0.7, 1, 0.96] },
+  current: { drift: 0.13, full: 20, floor: 0.6, width: 1.2, color: [0.7, 1, 0.96] },
 };
 const RADIUS = 1.0014;
 const DEG = Math.PI / 180;
@@ -63,7 +64,7 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
       age: new Float32Array(COUNT),
       life: new Float32Array(COUNT),
       speed: new Float32Array(COUNT),
-      trail: new Float32Array(COUNT * TRAIL * 3), // oldest point first
+      trail: new Float32Array(COUNT * KEPT * 3), // oldest point first
       clock: 0,
     }),
     [],
@@ -93,9 +94,11 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
     [object],
   );
 
+  const drawn = useMemo(() => new Float32Array(TRAIL * 3), []);
+
   const setPoint = (p: number, t: number, lon: number, lat: number) => {
     const c = Math.cos(lat * DEG);
-    const o = (p * TRAIL + t) * 3;
+    const o = (p * KEPT + t) * 3;
     state.trail[o] = -RADIUS * c * Math.cos((lon + 180) * DEG);
     state.trail[o + 1] = RADIUS * Math.sin(lat * DEG);
     state.trail[o + 2] = RADIUS * c * Math.sin((lon + 180) * DEG);
@@ -106,7 +109,7 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
     state.lon[p] = Math.random() * 360 - 180;
     state.age[p] = 0;
     state.life[p] = 2 + Math.random() * 4;
-    for (let t = 0; t < TRAIL; t++) setPoint(p, t, state.lon[p], state.lat[p]);
+    for (let t = 0; t < KEPT; t++) setPoint(p, t, state.lon[p], state.lat[p]);
   };
 
   // start with streaks at every age, so the first frame does not pulse
@@ -145,18 +148,28 @@ export default function FlowLayer({ field, u, v, nlat, nlon, grid, visible = tru
       state.lat[p] += wv * look.drift * dt;
       if (state.lon[p] > 180) state.lon[p] -= 360;
       else if (state.lon[p] < -180) state.lon[p] += 360;
-      if (shift) state.trail.copyWithin(p * TRAIL * 3, p * TRAIL * 3 + 3, (p + 1) * TRAIL * 3);
-      setPoint(p, TRAIL - 1, state.lon[p], state.lat[p]);
+      if (shift) state.trail.copyWithin(p * KEPT * 3, p * KEPT * 3 + 3, (p + 1) * KEPT * 3);
+      setPoint(p, TRAIL, state.lon[p], state.lat[p]);
     }
 
+    // history is stored at fixed steps, but each drawn point slides between two stored ones by how far the
+    // current step has run, so the whole streak glides every frame instead of jumping at each step
+    const f = state.clock / STEP_S;
     const fade = presence.current;
     for (let p = 0; p < COUNT; p++) {
+      const base = p * KEPT * 3;
+      for (let t = 0; t < TRAIL - 1; t++) {
+        for (let k = 0; k < 3; k++) {
+          const a = state.trail[base + t * 3 + k];
+          drawn[t * 3 + k] = a + f * (state.trail[base + (t + 1) * 3 + k] - a);
+        }
+      }
+      for (let k = 0; k < 3; k++) drawn[(TRAIL - 1) * 3 + k] = state.trail[base + TRAIL * 3 + k];
       const life = state.life[p], age = state.age[p];
       const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, look.floor + state.speed[p] / look.full) * fade;
       for (let t = 0; t < TRAIL - 1; t++) {
         const o = (p * (TRAIL - 1) + t) * 6;
-        const a = (p * TRAIL + t) * 3;
-        for (let k = 0; k < 6; k++) positions.array[o + k] = state.trail[a + k];
+        for (let k = 0; k < 6; k++) positions.array[o + k] = drawn[t * 3 + k];
         const from = alive * (t / (TRAIL - 1));
         const to = alive * ((t + 1) / (TRAIL - 1));
         for (let k = 0; k < 3; k++) {

@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
-import { AdditiveBlending, BackSide, BufferGeometry, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, BufferGeometry, CanvasTexture, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
@@ -79,15 +79,41 @@ function Atmosphere() {
   );
 }
 
-// easter egg: a small asteroid with the team picture as its rock, a dozen pixels across. It floats at a fixed spot in
-// space, below and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as
-// the globe turns
-const SECRET_ASTEROID_AT: [number, number, number] = [16.2, -50.6, -78.8];
-const SECRET_ASTEROID_RADIUS = 0.75; // world units, some 95 away
+// easter egg: a small comet whose nucleus is a rock with the team picture on it. It hangs at a fixed spot in space,
+// below and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as the globe
+// turns; its tail streaks up and to the right, away from the Sun that lights the nucleus from the lower left
+const SECRET_COMET_AT: [number, number, number] = [16.2, -50.6, -78.8];
+const SECRET_COMET_RADIUS = 0.5; // nucleus, world units, some 95 away
+const COMET_TAIL = new Vector3(0.82, 0.5, -0.28).normalize(); // away from the Sun
+const COMET_TAIL_LENGTH = 7;
+const COMET_TAIL_PUFFS = 36; // close together and soft, so they blend into one streak
 
-// tapping it opens the full picture. It is small, so a short tap anywhere within a fingertip of where it is on screen
-// counts, unless the Earth is in front of it. Worked out in screen space on each tap, not by the 3D hit test
-const SECRET_ASTEROID_HIT_PX = 24;
+// tapping its head opens the full picture. It is small, so a short tap anywhere within a fingertip of the head counts,
+// unless the Earth is in front of it. Worked out in screen space on each tap, not by the 3D hit test
+const SECRET_COMET_HIT_PX = 24;
+
+// a soft round glow: with a white core for the coma, without one for the tail puffs (a core in each puff shows as beads)
+function glowTexture(core: boolean): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  if (core) g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(core ? 0.25 : 0, core ? "rgba(200,230,255,0.55)" : "rgba(200,230,255,0.5)");
+  g.addColorStop(1, "rgba(150,200,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
+
+// the tail: puffs along the tail direction, widening and fading with distance from the head
+const COMET_PUFFS = Array.from({ length: COMET_TAIL_PUFFS }, (_, i) => {
+  const t = (i + 1) / COMET_TAIL_PUFFS;
+  const along = COMET_TAIL.clone().multiplyScalar(t * COMET_TAIL_LENGTH);
+  return { position: along.toArray() as [number, number, number], size: 1.1 + t * 2.4, opacity: 0.32 * (1 - t) ** 1.5 };
+});
 
 // a lumpy rock: a sphere whose surface points move in or out by a fixed pattern of their direction (so points the
 // sphere repeats along its seams move together and the surface stays closed), with flat facets
@@ -106,7 +132,7 @@ function asteroidGeometry(): BufferGeometry {
   return geometry;
 }
 
-function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
+function SecretComet({ onOpen }: { onOpen: () => void }) {
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
@@ -115,7 +141,7 @@ function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
 
   useEffect(() => {
     const el = gl.domElement;
-    const star = new Vector3(...SECRET_ASTEROID_AT);
+    const star = new Vector3(...SECRET_COMET_AT);
     const onScreen = new Vector3();
     const sightLine = new Ray();
     let down: { x: number; y: number } | null = null;
@@ -130,7 +156,7 @@ function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
       const rect = el.getBoundingClientRect();
       const x = rect.left + ((onScreen.x + 1) / 2) * rect.width;
       const y = rect.top + ((1 - onScreen.y) / 2) * rect.height;
-      if (Math.hypot(e.clientX - x, e.clientY - y) > SECRET_ASTEROID_HIT_PX) return;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > SECRET_COMET_HIT_PX) return;
       sightLine.set(camera.position, star.clone().sub(camera.position).normalize());
       if (sightLine.intersectsSphere(UNIT_SPHERE)) return; // hidden behind the Earth
       openRef.current();
@@ -144,7 +170,16 @@ function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
   }, [gl, camera]);
   const rock = useRef<Mesh>(null);
   const geometry = useMemo(asteroidGeometry, []);
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  const glow = useMemo(() => glowTexture(true), []);
+  const haze = useMemo(() => glowTexture(false), []);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      glow.dispose();
+      haze.dispose();
+    },
+    [geometry, glow, haze],
+  );
   // tumbles only while frames are drawn anyway (the globe spinning or being dragged), so it never keeps the GPU busy
   useFrame((_, delta) => {
     if (!rock.current) return;
@@ -166,13 +201,22 @@ function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
   }, [invalidate]);
   if (!texture) return null;
   return (
-    <group position={SECRET_ASTEROID_AT}>
-      {/* only the asteroid is lit (everything else in the scene draws its own colours), from the Sun's side */}
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[60, 40, 80]} intensity={2.2} />
-      <mesh ref={rock} geometry={geometry} scale={SECRET_ASTEROID_RADIUS} rotation={[0.4, 1.1, 0.2]} raycast={() => null}>
+    <group position={SECRET_COMET_AT}>
+      {/* only the nucleus is lit (everything else in the scene draws its own colours), from the Sun, opposite the tail */}
+      <ambientLight intensity={0.7} />
+      <directionalLight position={COMET_TAIL.clone().multiplyScalar(-100).toArray()} intensity={2.4} />
+      <mesh ref={rock} geometry={geometry} scale={SECRET_COMET_RADIUS} rotation={[0.4, 1.1, 0.2]} raycast={() => null}>
         <meshStandardMaterial map={texture} flatShading roughness={1} metalness={0} />
       </mesh>
+      {/* coma: the glowing haze around the nucleus */}
+      <sprite scale={2.4} raycast={() => null}>
+        <spriteMaterial map={glow} color="#cfe6ff" transparent opacity={0.7} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+      </sprite>
+      {COMET_PUFFS.map((puff, i) => (
+        <sprite key={i} position={puff.position} scale={puff.size} raycast={() => null}>
+          <spriteMaterial map={haze} color="#bcdcff" transparent opacity={puff.opacity} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+        </sprite>
+      ))}
     </group>
   );
 }
@@ -477,7 +521,7 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <SecretAsteroid onOpen={() => setSecretOpen(true)} />
+        <SecretComet onOpen={() => setSecretOpen(true)} />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}

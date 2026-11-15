@@ -2,10 +2,9 @@
 
 import { lazy, Suspense, useEffect } from "react";
 import { Link, NavLink, Route, Routes } from "react-router";
-import { BookOpen, Candy, Compass, Earth, Globe, LoaderCircle, Moon, PlayCircle, type LucideIcon } from "lucide-react";
+import { BookOpen, Compass, Earth, Globe, LoaderCircle, PlayCircle, type LucideIcon } from "lucide-react";
 import { usingMockData } from "@/api";
 import { Status } from "@/components/ui/status";
-import { setTheme, useThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useCatalogStore } from "@/store/useCatalogStore";
 
@@ -21,24 +20,6 @@ const links: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/demos", label: "Demos", icon: PlayCircle },
   { to: "/learn", label: "Learn", icon: BookOpen },
 ];
-
-// phones only for now: the marshmallow theme does not apply on wider screens yet
-function ThemeSwitch() {
-  const theme = useThemeChoice();
-  const marshmallow = theme === "marshmallow";
-  return (
-    <button
-      type="button"
-      onClick={() => setTheme(marshmallow ? "dark" : "marshmallow")}
-      aria-pressed={marshmallow}
-      aria-label={marshmallow ? "Switch to the dark theme" : "Switch to the marshmallow theme"}
-      title={marshmallow ? "Dark theme" : "Marshmallow theme"}
-      className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors active:bg-accent sm:hidden"
-    >
-      {marshmallow ? <Moon className="size-5" strokeWidth={1.75} /> : <Candy className="size-5 text-primary" strokeWidth={1.75} />}
-    </button>
-  );
-}
 
 function Header() {
   return (
@@ -70,7 +51,6 @@ function Header() {
             mock data
           </Status>
         )}
-        <ThemeSwitch />
       </div>
     </header>
   );

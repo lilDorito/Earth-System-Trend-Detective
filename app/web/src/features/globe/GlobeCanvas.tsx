@@ -641,17 +641,22 @@ export default function GlobeCanvas({
             autoFocus
             className="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-4 bg-black/85 p-4 backdrop-blur-sm sm:gap-6"
           >
-            {/* Star Wars yellow in the Star Jedi face; its lower case letters are the logo's swashed forms */}
-            <motion.span
-              aria-label="Made by"
-              initial={{ opacity: 0, y: -24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -24 }}
-              transition={{ duration: 0.45, delay: 0.1, ease: "easeOut" }}
-              className="font-['Star_Jedi',ui-sans-serif,sans-serif] text-5xl leading-none tracking-wide text-[#ffe81f] [text-shadow:0_0_18px_rgb(255_232_31/0.45)] sm:text-7xl"
-            >
-              made by
-            </motion.span>
+            {/* Star Wars yellow in the Star Jedi face, tipped back into space like the opening crawl: the top edge
+                recedes, so the letters narrow upwards. The tilt sits on a wrapper, since motion owns the inner transform */}
+            <span className="block [perspective:260px]">
+              <span className="block origin-bottom [transform:rotateX(38deg)]">
+                <motion.span
+                  aria-label="Made by"
+                  initial={{ opacity: 0, y: 40 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 40 }}
+                  transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+                  className="block font-['Star_Jedi',ui-sans-serif,sans-serif] text-6xl leading-none tracking-wide text-[#ffe81f] [text-shadow:0_0_18px_rgb(255_232_31/0.45)] sm:text-8xl"
+                >
+                  made by
+                </motion.span>
+              </span>
+            </span>
             <motion.img
               src="/textures/goyz.jpg"
               alt="The team, as astronauts on the Moon"

@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import Results from "@/features/explorer/Results";
 import Wizard from "@/features/explorer/Wizard";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
+import { countryAt } from "@/features/globe/countryAt";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline, type Area } from "@/features/globe/useOutline";
 import { useAppStore } from "@/store/useAppStore";
@@ -12,13 +13,14 @@ import { useAppStore } from "@/store/useAppStore";
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 export default function ExplorerPage() {
-  const { location, boundary, focus, setLocation, setBox, clearLocation } = useAppStore(
+  const { location, boundary, focus, setLocation, setBox, pickBoundary, clearLocation } = useAppStore(
     useShallow((s) => ({
       location: s.location,
       boundary: s.boundary,
       focus: s.focus,
       setLocation: s.setLocation,
       setBox: s.setBox,
+      pickBoundary: s.pickBoundary,
       clearLocation: s.clearLocation,
     })),
   );
@@ -44,6 +46,7 @@ export default function ExplorerPage() {
           onPick={(lat, lon, name) => setLocation({ type: "point", lat: round(lat), lon: round(lon) }, name ?? null)}
           onClear={clearLocation}
           onBox={setBox}
+          onCountry={(lat, lon) => void countryAt(lat, lon).then((b) => b && pickBoundary(b))}
         />
       </section>
 

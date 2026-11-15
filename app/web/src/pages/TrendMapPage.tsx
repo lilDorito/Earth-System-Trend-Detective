@@ -8,6 +8,7 @@ import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
 import { countryAt } from "@/features/globe/countryAt";
+import { seaAt } from "@/features/globe/seas";
 import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline } from "@/features/globe/useOutline";
@@ -66,13 +67,27 @@ export default function TrendMapPage() {
         hint="Click to inspect a grid cell, shift-drag for a box, right-click to clear"
         touchHint="Tap a cell to inspect it, pinch to zoom"
         detail={!s.showTrend}
-        onPick={(lat, lon, city) => void s.selectPoint(lat, lon, city)}
+        onPick={(lat, lon, city) => {
+          // one selection at a time: a new point replaces the open area
+          void s.setRegion(null);
+          void s.selectPoint(lat, lon, city);
+        }}
         // clears the picked cell first, then the region
         onClear={() => (s.picked ? s.clearSelection() : void s.setRegion(null))}
-        onBox={(box) => void s.setRegion({ kind: "box", box })}
+        onBox={(box) => {
+          s.clearSelection();
+          void s.setRegion({ kind: "box", box });
+        }}
+        areaMode={s.meta?.domain === "ocean" ? "sea" : "country"}
         onCountry={(lat, lon) =>
-          void countryAt(lat, lon).then((boundary) => boundary && s.setRegion({ kind: "boundary", boundary }))
+          void (s.meta?.domain === "ocean" ? seaAt(lat, lon) : countryAt(lat, lon)).then((boundary) => {
+            if (!boundary) return;
+            // one selection at a time: a new area replaces the open point
+            s.clearSelection();
+            void s.setRegion({ kind: "boundary", boundary });
+          })
         }
+        rightInset={s.region || s.selected ? 396 : 0}
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}

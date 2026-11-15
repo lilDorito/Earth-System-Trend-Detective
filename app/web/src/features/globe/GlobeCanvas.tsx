@@ -1,10 +1,10 @@
 // 3D globe shared by the explorer and the trend map
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crosshair, Flag, SquareDashed, X } from "lucide-react";
+import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
 import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
@@ -35,6 +35,8 @@ type GlobeCanvasProps = {
   onClear?: () => void;
   onBox?: (box: BBox) => void;
   onCountry?: (lat: number, lon: number) => void; // country mode: a click picks the country under it
+  areaMode?: "country" | "sea"; // what the country button picks: countries, or seas and oceans
+  rightInset?: number; // px covered by a side panel on the right; the mode switch centres in the rest
   outline?: Ring[] | null;
   hint?: string;
   touchHint?: string; // shown instead of hint on touch screens
@@ -302,6 +304,8 @@ export default function GlobeCanvas({
   onClear,
   onBox,
   onCountry,
+  areaMode = "country",
+  rightInset = 0,
   outline = null,
   hint: mouseHint = "",
   touchHint,
@@ -376,7 +380,10 @@ export default function GlobeCanvas({
       {onBox && ready && (
         // what a click or drag on the globe does; shift-drag draws a box in either mode.
         // phones get a thumb-reachable rail on the right edge, with a clear button in place of right-click
-        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 sm:left-1/2 sm:right-auto sm:top-4 sm:-translate-x-1/2 sm:translate-y-0 sm:flex-row">
+        <div
+          style={{ "--inset": `${rightInset}px` } as CSSProperties}
+          className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 transition-[left] duration-200 sm:left-[calc(50%-var(--inset)/2)] sm:right-auto sm:top-4 sm:-translate-x-1/2 sm:translate-y-0 sm:flex-row"
+        >
         <div
           role="radiogroup"
           aria-label="Selection mode"
@@ -385,7 +392,11 @@ export default function GlobeCanvas({
           {([
             ["point", Crosshair, "Point", "Click to pick a point"],
             ["box", SquareDashed, "Box", "Drag on the globe to draw a box (shift-drag works in point mode too)"],
-            ...(onCountry ? ([["country", Flag, "Country", "Click on the globe to select that country"]] as const) : []),
+            ...(onCountry
+              ? areaMode === "sea"
+                ? ([["country", Waves, "Sea", "Click on the water to select that sea or ocean"]] as const)
+                : ([["country", Flag, "Country", "Click on the globe to select that country"]] as const)
+              : []),
           ] as const).map(([mode, Icon, label, title]) => (
             <button
               key={label}

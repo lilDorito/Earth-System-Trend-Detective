@@ -1,8 +1,10 @@
 # global trend map endpoints, each takes a variable and an optional year range (default: the whole record)
 
+import json
 import threading
 import warnings
 from functools import lru_cache, wraps
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -274,7 +276,45 @@ def _has_regions() -> bool:
         return False
 
 
+# seas and oceans (Natural Earth marine areas): the web app's files, so the map outline and the mean agree
+SEAS_DIR = Path(__file__).resolve().parents[1] / "web" / "public" / "regions"
+_sea_masks: dict[tuple, np.ndarray] = {}
+
+
+@lru_cache(maxsize=1)
+def _seas() -> tuple[dict, dict]:
+    rows = json.loads((SEAS_DIR / "seas.json").read_text(encoding="utf-8"))["rows"]
+    outlines = json.loads((SEAS_DIR / "outlines" / "sea.json").read_text(encoding="utf-8"))
+    return {r["id"]: r for r in rows}, outlines
+
+
+def _sea_fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarray, list[float]]:
+    rows, outlines = _seas()
+    if name not in rows:
+        raise HTTPException(404, f"Unknown sea: {name}")
+    meta = rows[name]
+    key = (name, ds.lat.tobytes(), ds.lon.tobytes())
+    if key not in _sea_masks:
+        # even-odd test of every cell centre against all rings; each edge only touches the rows it spans
+        lat, lon = np.asarray(ds.lat, float), np.asarray(ds.lon, float)
+        order = np.argsort(lat)
+        inside = np.zeros((len(lat), len(lon)), dtype=bool)
+        for ring in outlines[name]:
+            xs, ys = np.asarray(ring[0::2], float), np.asarray(ring[1::2], float)
+            for x1, y1, x0, y0 in zip(xs, ys, np.roll(xs, 1), np.roll(ys, 1)):
+                if y1 == y0:
+                    continue
+                lo, hi = np.searchsorted(lat[order], [min(y0, y1), max(y0, y1)])
+                for i in order[lo:hi]:
+                    x = x1 + (lat[i] - y1) * (x0 - x1) / (y0 - y1)
+                    inside[i] ^= lon < x
+        _sea_masks[key] = inside.astype(float)
+    return meta["name"], _sea_masks[key], [meta["south"], meta["north"], meta["west"], meta["east"]]
+
+
 def _fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarray, list[float]]:
+    if name.startswith("sea-"):
+        return _sea_fractions(name, ds)
     # share of each cell inside the region: preset boxes on any grid, Natural Earth boundaries on the live 1 degree grid
     live = settings.data_mode == "live" and ds.values.shape[1:] == (len(dataset.LAT), len(dataset.LON))
     label = None

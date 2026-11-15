@@ -7,7 +7,7 @@ const inBox = (b: Boundary, lat: number, lon: number) =>
   lat >= b.south && lat <= b.north && (b.west <= b.east ? lon >= b.west && lon <= b.east : lon >= b.west || lon <= b.east);
 
 // even-odd over all rings, so holes (enclaves, lakes) count as outside
-function inside(rings: Ring[], lat: number, lon: number) {
+export function inside(rings: Ring[], lat: number, lon: number) {
   let hit = false;
   for (const ring of rings) {
     for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {

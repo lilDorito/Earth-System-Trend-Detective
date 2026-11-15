@@ -80,6 +80,21 @@ function Atmosphere() {
   );
 }
 
+// marshmallow theme: a pastel veil over the satellite imagery (and the detail tiles at 1.0003), so the dark
+// oceans do not jump out of the pink page; the trend layer draws its own muted ground, so it is not veiled
+function PastelVeil() {
+  return (
+    <mesh raycast={() => null}>
+      {/* fine enough that its flat facets stay above the detail tiles (1.0003); coarser ones dip under them and flicker */}
+      <sphereGeometry args={[1.0005, 256, 128]} />
+      <meshBasicMaterial color={VEIL_COLOR} transparent opacity={VEIL_OPACITY} depthWrite={false} toneMapped={false} />
+    </mesh>
+  );
+}
+
+const VEIL_COLOR = "#fbe3ec";
+const VEIL_OPACITY = 0.5;
+
 // orbit controls turn 2π·rotateSpeed per screen height dragged; this rate keeps the surface under the finger
 const TRACK_FINGER = (2 * Math.tan(((FOV / 2) * Math.PI) / 180)) / (2 * Math.PI);
 
@@ -381,6 +396,7 @@ export default function GlobeCanvas({
         {!phoneTheme && <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />}
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
+        {phoneTheme && detail && texture && <PastelVeil />}
         {children}
         {outline && outline.length > 0 && <Outline rings={outline} />}
         {onBox && (

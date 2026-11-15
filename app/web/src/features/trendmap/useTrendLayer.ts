@@ -7,7 +7,7 @@ import { contourSegments, extrema } from "@/features/globe/contours";
 import { halfOf, prepareField } from "@/features/globe/field";
 import type { FieldLook } from "@/features/globe/FieldLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
-import { FADE, FINGERPRINT, bandColors, styleFor, valueRange } from "./styles";
+import { FADE, bandColors, styleFor, valueRange } from "./styles";
 
 function periodMean(frames: TrendFrames): (number | null)[] {
   const n = frames.frames[0]?.length ?? 0;
@@ -35,7 +35,6 @@ export function useTrendLayer() {
       frameYear: s.frameYear,
       onlySignificant: s.onlySignificant,
       stipple: s.stipple,
-      hotspot: s.hotspot,
     })),
   );
   const style = styleFor(s.meta?.key);
@@ -51,11 +50,6 @@ export function useTrendLayer() {
 
   const layer = useMemo(() => {
     const { meta } = s;
-    if (s.hotspot) {
-      const h = s.hotspot;
-      const look: FieldLook = { palette: bandColors(FINGERPRINT), lo: 0, hi: 1, fade: 0, isobars: false, stipple: false };
-      return { nlat: h.n_lat, nlon: h.n_lon, grid: h, values: h.score, mask: null, sig: null, look, quantity: `hotspot:${h.id}`, domain: h.domain };
-    }
     if (!meta) return null;
     const isobars = !!style.isobars;
     if (s.display === "values") {

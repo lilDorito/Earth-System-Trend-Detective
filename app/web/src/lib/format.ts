@@ -1,7 +1,5 @@
 // number, date and coordinate formatting
 
-import type { Location } from "@/api/types";
-
 export function formatNumber(value: number, digits = 2): string {
   const abs = Math.abs(value);
   if (abs !== 0 && (abs >= 1e5 || abs < 1e-3)) return value.toExponential(1).replace("e+", "e");
@@ -39,26 +37,3 @@ export function formatLatLon(lat: number, lon: number): string {
   return `${formatCoord(lat, "N", "S")}, ${formatCoord(lon, "E", "W")}`;
 }
 
-export function formatLocation(location: Location): string {
-  if (location.type === "point") return formatLatLon(location.lat, location.lon);
-  if (location.type === "region") return location.id;
-  if (location.type === "regions") return `${location.ids.length} regions`;
-  return `${formatLatLon(location.south, location.west)} to ${formatLatLon(location.north, location.east)}`;
-}
-
-// null for regions: their centre lives in the boundary index, not in the location
-export function locationCenter(location: Location): { lat: number; lon: number } | null {
-  if (location.type === "point") return { lat: location.lat, lon: location.lon };
-  if (location.type === "region" || location.type === "regions") return null;
-  // west > east is a box across 180 degrees
-  const width = (location.east - location.west + 360) % 360;
-  return { lat: (location.south + location.north) / 2, lon: ((location.west + width / 2 + 540) % 360) - 180 };
-}
-
-export function formatMonth(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
-}
-
-export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}

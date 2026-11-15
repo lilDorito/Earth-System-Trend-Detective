@@ -219,7 +219,6 @@ export function trendRegion(query: TrendRegionQuery): TrendRegion {
   const mean = YEARS.map((_, k) => members.reduce((sum, cell) => sum + values[k * cells + cell] * weight(cell), 0) / weightSum);
   const world = trendGlobalMean();
   const region = summarize(mean);
-  const periodMean = mean.reduce((a, b) => a + b, 0) / mean.length;
   const warming = members.reduce((sum, cell) => sum + (slope[cell] > 0 ? weight(cell) : 0), 0) / weightSum;
 
   return {
@@ -233,7 +232,6 @@ export function trendRegion(query: TrendRegionQuery): TrendRegion {
     mean: mean.map((v) => round(v)),
     fitted: region.fitted,
     global_mean: world.values,
-    stripes: mean.map((v) => round(v - periodMean)),
     trend: region.trend as TrendRegion["trend"],
     p: region.p,
     autocorr_corrected: false,

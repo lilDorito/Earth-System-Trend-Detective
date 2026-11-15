@@ -1,15 +1,6 @@
-// API types, mirror src/contracts.py and app/api/schemas.py
+// API types, mirror the responses of app/api
 
-export type Resolution = "hourly" | "3-hourly" | "daily" | "monthly";
-export type SourceName = "hf_grid" | "mock";
-export type Mode = "trend" | "event";
-
-export type Point = { type: "point"; lat: number; lon: number };
 export type BBox = { type: "bbox"; west: number; south: number; east: number; north: number };
-export type RegionLocation = { type: "region"; id: string };
-export type RegionsLocation = { type: "regions"; ids: string[] };
-export type Location = Point | BBox | RegionLocation | RegionsLocation;
-
 export type Boundary = {
   id: string;
   name: string;
@@ -24,126 +15,6 @@ export type Boundary = {
   west: number; // west > east: across 180 degrees
   east: number;
   areaKm2: number;
-};
-
-export type VariableInfo = {
-  key: string;
-  variable_id: string;
-  source: SourceName;
-  name: string;
-  short_definition: string;
-  units_raw: string;
-  units: string;
-  resolution: Resolution;
-  group: "atmosphere" | "land" | "ocean"; // heading in the explorer's list
-  typical_range: [number, number] | null; // 2nd-98th percentile in display units; shapes mock data
-  coverage_start: string;
-  coverage_end: string | null;
-  land_only: boolean;
-  region_tags: string[];
-};
-
-export type Region = { name: string; location: Location };
-export type RegionType = { label: string; hint: string; suggest: string[] };
-
-export type Demo = {
-  id: string;
-  title: string;
-  story: string;
-  variable: string;
-  region: string;
-  compare_region?: string;
-  start: string;
-  end: string;
-  mode: Mode;
-  event_date?: string;
-};
-
-export type SeriesMeta = {
-  variable_key: string;
-  variable_id: string;
-  variable_name: string;
-  units_raw: string;
-  units: string;
-  resolution: Resolution;
-  location: Location;
-  grid_lat: number | null;
-  grid_lon: number | null;
-  cells?: number | null;
-  coverage?: number | null;
-  region_name: string | null;
-  source: SourceName;
-  from_cache: boolean;
-  fetched_at: string;
-};
-
-export type SeriesPoint = {
-  time: string;
-  value: number | null;
-  climatology: number | null;
-  anomaly: number | null;
-};
-
-export type TrendResult = {
-  mode: "trend";
-  n: number;
-  start: string;
-  end: string;
-  units: string;
-  alpha: number;
-  slope_per_decade: number;
-  ci_low: number;
-  ci_high: number;
-  p_value: number;
-  significant: boolean;
-  mk_trend: "increasing" | "decreasing" | "no trend";
-  mk_tau: number;
-  mk_p: number;
-  sen_slope_per_decade: number;
-  total_change: number;
-  deseasonalized: boolean;
-  autocorr_corrected: boolean;
-  fit_line: [string, number][];
-  verdict: string;
-};
-
-export type EventResult = {
-  mode: "event";
-  event_date: string;
-  n_before: number;
-  n_after: number;
-  units: string;
-  alpha: number;
-  before_mean: number;
-  after_mean: number;
-  diff: number;
-  pct_change: number | null;
-  diff_ci_low: number;
-  diff_ci_high: number;
-  t_stat: number;
-  p_value: number;
-  significant: boolean;
-  deseasonalized: boolean;
-  verdict: string;
-};
-
-export type AnalysisResult = TrendResult | EventResult;
-
-export type AnalyzeRequest = {
-  variable: string;
-  location: Location;
-  start: string;
-  end: string;
-  mode?: Mode;
-  event_date?: string | null;
-  deseasonalize?: boolean;
-  region_name?: string | null;
-};
-
-export type AnalyzeResponse = {
-  meta: SeriesMeta;
-  series: SeriesPoint[];
-  result: AnalysisResult;
 };
 
 export type TrendVariable = {
@@ -233,6 +104,7 @@ export type TrendFlow = GridGeometry & {
 
 export type TrendRegionQuery = {
   name?: string;
+  names?: string[]; // several regions averaged as one area
   box?: Pick<BBox, "south" | "north" | "west" | "east">;
   label?: string;
 };
@@ -249,7 +121,6 @@ export type TrendRegion = {
   mean: (number | null)[];
   fitted: (number | null)[];
   global_mean: (number | null)[];
-  stripes: (number | null)[];
   trend: "increasing" | "decreasing" | "no trend";
   p: number;
   autocorr_corrected: boolean;
@@ -320,6 +191,7 @@ export type StationCompare = {
 export type InsightPlace =
   | { lat: number; lon: number }
   | { region: string }
+  | { regions: string }
   | { south: number; north: number; west: number; east: number };
 
 export type ScanRow = {
@@ -339,65 +211,20 @@ export type ScanRow = {
 
 export type Scan = { kind: "point" | "region" | "box"; approximate: boolean; variables: ScanRow[] };
 
+// interpretation checks on one variable at a place (app/api/insights.py /diagnose)
 export type Diagnosis = {
   key: string;
   name: string;
   units: string;
-  kind: "point" | "region" | "box";
   years: number[];
-  values: (number | null)[];
-  slope_decade: number;
-  p: number;
   significant: boolean;
-  sigma: number | null;
-  effect: number | null;
-  step: { year: number; p: number; shift: number; detected: boolean };
-  jump: { year: number; shift: number; bic_gain: number; likely: boolean };
+  slope_decade: number;
+  years_needed: number | null; // record length at which this slope would be significant
+  growth: { end: number; p: number }[]; // p of the record ending each year
+  jump: { year: number; shift: number; likely: boolean };
   robust: { stable: boolean; shifted: { start: number; slope: number; p: number }[] };
-  growth: { end: number; p: number }[];
-  years_needed: number | null;
-  windows: { p: (number | null)[][]; slope: (number | null)[][] }; // [start][end]
-  agreement: {
-    key: string;
-    name: string;
-    slope_decade: number;
-    own_slope_decade: number;
-    ratio: number | null;
-    agree: boolean;
-  } | null;
-  enso?: { trend: number; trend_without_enso: number; per_degree: number; explained: number } | null;
-};
-
-export type Scenario = {
-  id: string;
-  name: string;
-  story: string;
-  variables: { key: string; name: string; units: string; sign: 1 | -1 }[];
-};
-
-export type Hotspots = GridGeometry & {
-  id: string;
-  name: string;
-  n_vars: number;
-  n_lat: number;
-  n_lon: number;
-  domain: TrendVariable["domain"];
-  score: (number | null)[]; // share of the scenario's variables matching, null where any has no data
-  full: number[]; // 1 where all match
-  full_area_km2: number;
-  full_with_jump_km2: number;
-};
-
-export type TrendArea = { id: number; sign: 1 | -1; area_km2: number; slope_decade: number; lat: number; lon: number };
-
-export type Divergence = GridGeometry & {
-  key: string;
-  name: string;
-  units: string;
-  n_lat: number;
-  n_lon: number;
-  areas: TrendArea[];
-  labels: number[]; // area id per cell, 0 outside
+  enso: { explained: number; trend: number; trend_without_enso: number } | null;
+  agreement: { key: string; name: string; slope_decade: number; own_slope_decade: number; agree: boolean } | null;
 };
 
 export type Co2Series = {

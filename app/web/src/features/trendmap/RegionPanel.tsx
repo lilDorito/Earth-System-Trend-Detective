@@ -1,4 +1,4 @@
-// region vs the world: trend test, ratio, one stripe per year
+// region vs the world: verdict, ratio and a chart against the world average
 
 import { useEffect } from "react";
 import { motion } from "framer-motion";
@@ -7,41 +7,22 @@ import type { EChartsOption } from "echarts";
 import type { TrendRegion } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Panel, PanelSection } from "@/components/ui/panel";
 import { Status } from "@/components/ui/status";
 import Chart, { baseOption, palette, valueAxis } from "@/features/charts/Chart";
 import { usingMockData } from "@/api";
 import { formatP, formatSigned } from "@/lib/format";
 import { describeTrend } from "@/lib/summary";
+import ChartTitle from "@/features/charts/ChartTitle";
 import { cn } from "@/lib/utils";
 import { targetLabel, targetPlace, useTrendMapStore } from "@/store/useTrendMapStore";
 import Insights from "./Insights";
-import { divergingColor, styleFor } from "./styles";
+import VerdictHeadline from "./VerdictHeadline";
+import { verdict } from "./verdict";
+import { styleFor } from "./styles";
 
 const shortName = (region: TrendRegion) => region.label.split(" (")[0];
-const rgb = (c: number[]) => `rgb(${c.map(Math.round).join(",")})`;
-
-function Stripes({ region, units, stops }: { region: TrendRegion; units: string; stops: ReturnType<typeof styleFor>["change"] }) {
-  const peak = Math.max(...region.stripes.map((v) => Math.abs(v ?? 0))) || 1;
-  return (
-    <div>
-      <div className="flex h-14 overflow-hidden rounded-sm">
-        {region.stripes.map((v, i) => (
-          <div
-            key={region.years[i]}
-            className="flex-1"
-            style={{ background: rgb(divergingColor(stops, v ?? 0, peak)) }}
-            title={`${region.years[i]}: ${formatSigned(v ?? 0)} ${units} vs period mean`}
-          />
-        ))}
-      </div>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
-        <span>{region.years[0]}</span>
-        <span>{region.years[region.years.length - 1]}</span>
-      </div>
-    </div>
-  );
-}
 
 function VersusWorld({ region, units }: { region: TrendRegion; units: string }) {
   const sinceStart = (values: (number | null)[]) => {
@@ -55,7 +36,7 @@ function VersusWorld({ region, units }: { region: TrendRegion; units: string }) 
       valueFormatter: (v) => (typeof v === "number" ? `${formatSigned(v)} ${units}` : "–"),
     },
     legend: { top: 0, left: 0, textStyle: { color: palette.text }, itemWidth: 12, itemHeight: 2, icon: "rect" },
-    grid: { left: 0, right: 4, top: 26, bottom: 0, containLabel: true },
+    grid: { left: 0, right: 4, top: 40, bottom: 0, containLabel: true },
     xAxis: {
       type: "category",
       data: region.years,
@@ -63,7 +44,7 @@ function VersusWorld({ region, units }: { region: TrendRegion; units: string }) 
       axisLine: { lineStyle: { color: palette.axis } },
       axisLabel: { color: palette.text, hideOverlap: true },
     },
-    yAxis: { ...valueAxis, splitNumber: 3 },
+    yAxis: { ...valueAxis, splitNumber: 3, name: units },
     series: [
       {
         name: shortName(region),
@@ -126,7 +107,10 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
               </p>
             )}
             {!loading && region.coverage != null && region.coverage < 0.9 && (
-              <p className="mt-1 text-xs text-warning">Data covers {Math.round(region.coverage * 100)}% of this area</p>
+              <p className="mt-1 text-xs text-warning">
+                Only {Math.round(region.coverage * 100)}% of this area has data
+                {meta?.domain === "ocean" ? ": this variable is measured at sea only" : meta?.domain === "land" ? ": this variable is measured on land only" : ""}.
+              </p>
             )}
           </div>
           <Button variant="ghost" size="icon" className="-mr-1.5" onClick={() => void setRegion(null)} aria-label="Close">
@@ -136,12 +120,12 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
 
         <div className={cn("transition-opacity duration-150", loading && "pointer-events-none opacity-40")}>
         <PanelSection className="space-y-2">
-          <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="whitespace-nowrap font-mono text-2xl font-medium tabular-nums">{formatSigned(region.total_change)} {units}</span>
-            <span className="text-sm text-muted-foreground">
-              over the period, {formatSigned(region.slope_decade)} {units} / decade
-            </span>
-          </p>
+          <VerdictHeadline v={verdict(meta?.key ?? "", region.slope_decade, region.trend !== "no trend", units)}>
+            <InfoTip>
+              The answer to "Is Earth okay?" for this area, from the trend of its yearly averages. In total that is{" "}
+              {formatSigned(region.total_change)} {units} from {region.start} to {region.end}.
+            </InfoTip>
+          </VerdictHeadline>
           <p className="text-sm">
             {ratio == null ? (
               <>The world trend is near zero ({formatSigned(region.global_slope_decade)} {units} / decade), so a ratio is not meaningful.</>
@@ -157,13 +141,16 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
             )}
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <Status tone={region.trend === "no trend" ? "muted" : "success"}>
-              {region.trend === "no trend" ? "no significant trend" : `${region.trend}, significant`}, p {region.p < 0.001 ? "" : "= "}
-              {formatP(region.p)}
-            </Status>
-            <Status>
-              {(region.share_warming * 100).toFixed(0)}% of the region {style.up}
-            </Status>
+            {region.trend !== "no trend" && (
+              <span title={`Mann-Kendall p ${region.p < 0.001 ? "" : "= "}${formatP(region.p)}`}>
+                <Status tone="success">statistically significant</Status>
+              </span>
+            )}
+            <span title="Share of the area's grid cells whose own trend goes up">
+              <Status>
+                {(region.share_warming * 100).toFixed(0)}% of the region {style.up}
+              </Status>
+            </span>
           </div>
           {meta && (
             <p className="text-sm leading-relaxed">
@@ -181,16 +168,12 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
         </PanelSection>
 
         <PanelSection>
-          <Label className="mb-1">
-            Change since {region.start}, {units}
-          </Label>
+          <ChartTitle title={`${shortName(region)} against the world`}>
+            Change since {region.start} in {units}: this area next to the average of the whole planet.
+          </ChartTitle>
           <VersusWorld region={region} units={units} />
         </PanelSection>
 
-        <PanelSection>
-          <Label className="mb-2">{style.stripes ?? "Stripes"}, one bar per year</Label>
-          <Stripes region={region} units={units} stops={style.change} />
-        </PanelSection>
         </div>
         {!usingMockData && meta && target && <Insights variable={meta.key} place={targetPlace(target)} />}
       </Panel>

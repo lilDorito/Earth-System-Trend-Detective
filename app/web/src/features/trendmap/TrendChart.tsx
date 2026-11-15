@@ -58,15 +58,15 @@ export default function TrendChart({ years, values, fitted, rolling, units = "",
     legend: compact
       ? undefined
       : { top: 0, left: 0, textStyle: { color: palette.text }, itemWidth: 12, itemHeight: 2, icon: "rect" },
-    grid: { left: 0, right: 4, top: compact ? 6 : 28, bottom: 0, containLabel: true },
+    grid: { left: 0, right: 4, top: compact ? 6 : 40, bottom: 0, containLabel: true },
     xAxis: {
       type: "category",
       data: years,
       boundaryGap: false,
       axisLine: { lineStyle: { color: palette.axis } },
-      axisLabel: { color: palette.text, hideOverlap: true, interval: compact ? 7 : "auto" },
+      axisLabel: { color: palette.text, hideOverlap: true, interval: compact ? 7 : "auto", fontSize: 11 },
     },
-    yAxis: { ...valueAxis, splitNumber: compact ? 2 : 4 },
+    yAxis: { ...valueAxis, splitNumber: compact ? 2 : 4, name: compact ? undefined : units },
     series,
   };
 

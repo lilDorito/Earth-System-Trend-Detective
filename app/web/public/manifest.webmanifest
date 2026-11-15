@@ -1,6 +1,6 @@
 {
-  "name": "Earth Trend Detective",
-  "short_name": "Trend Detective",
+  "name": "Is Earth okay?",
+  "short_name": "Is Earth okay?",
   "description": "Pick any place on Earth, choose a variable and find out whether it is really changing.",
   "id": "/",
   "start_url": "/",

@@ -1,7 +1,6 @@
 # gridded variables from the Hugging Face dataset (scripts/ingest/hf_dataset.py builds it)
 
 import os
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -20,9 +19,6 @@ LOCAL = os.environ.get("HF_DATASET_PATH")  # a local copy (e.g. data/hf) instead
 LAT = np.arange(-89.5, 90, 1.0)
 LON = np.arange(-179.5, 180, 1.0)
 MIN_MONTHS = 9  # a cell-year with fewer months is too seasonal to average
-SEARCH_CELLS = 2  # how far (in cells) a point may snap to the nearest cell with data
-MIN_FRAC = 1e-4  # box slivers below this share of a cell are left out
-READERS = 8  # latitude bands fetched at once for an area
 
 DISPLAY_UNITS = {
     "degC": (1, "°C"),
@@ -51,6 +47,16 @@ VIRTUAL = {
 
 class DatasetError(Exception):
     pass
+
+
+def where_measured(key: str) -> str:
+    # appended to "no data" errors, so a click on land for a sea variable says why
+    try:
+        domain = variable(key)["domain"]
+    except (KeyError, DatasetError):
+        return ""
+    return {"ocean": " It is measured only over the ocean: pick a place at sea.",
+            "land": " It is measured only over land: pick a place on land."}.get(domain, "")
 
 
 def open_file(path: str, block_size: int = 1 << 18):
@@ -126,67 +132,6 @@ def _release() -> None:
     pa.default_memory_pool().release_unused()
 
 
-@lru_cache(maxsize=32)
-def _grid_file(key: str) -> pq.ParquetFile:
-    if key in VIRTUAL:
-        raise DatasetError(f"{variable(key)['name']} has annual maps only")
-    return pq.ParquetFile(open_file(f"grid/{key}.parquet"))
-
-
-def _band(key: str, lat: float, own_handle: bool = False) -> pd.DataFrame:
-    # only row groups whose latitude range holds this band are fetched (one per band in the built files)
-    file = _grid_file(key)
-    groups = []
-    for i in range(file.metadata.num_row_groups):
-        stats = file.metadata.row_group(i).column(1).statistics
-        if stats is None or stats.min <= lat <= stats.max:
-            groups.append(i)
-    if not groups:
-        return pd.DataFrame(columns=["date", "lon", "value", "valid_frac"])
-    columns = ["date", "lat", "lon", "value", "valid_frac"]
-    if own_handle:
-        # a file handle is not thread-safe; the cached footer saves re-reading it
-        with open_file(f"grid/{key}.parquet") as handle:
-            rows = pq.ParquetFile(handle, metadata=file.metadata).read_row_groups(groups, columns=columns).to_pandas()
-    else:
-        rows = file.read_row_groups(groups, columns=columns).to_pandas()
-    return rows[rows["lat"] == lat].drop(columns="lat")
-
-
-def cell_center(value: float) -> float:
-    return min(89.5, max(-89.5, np.floor(value) + 0.5))
-
-
-def point_series(key: str, lat: float, lon: float) -> tuple[pd.DataFrame, float, float]:
-    lat0, lon0 = cell_center(lat), ((np.floor(lon) + 180) % 360) - 179.5
-    best = None
-    for dlat in sorted(range(-SEARCH_CELLS, SEARCH_CELLS + 1), key=abs):
-        band_lat = lat0 + dlat
-        if best is not None and abs(dlat) >= best[0]:
-            break
-        if abs(band_lat) > 89.5:
-            continue
-        band = _band(key, band_lat)
-        for cell_lon, rows in band.groupby("lon"):
-            dlon = abs((cell_lon - lon0 + 180) % 360 - 180)
-            if dlon > SEARCH_CELLS:
-                continue
-            distance = np.hypot(dlat, dlon * np.cos(np.deg2rad(band_lat)))
-            if best is None or distance < best[0]:
-                best = (distance, band_lat, float(cell_lon), rows)
-    if best is None:
-        raise DatasetError(f"No {variable(key)['name']} data within about {SEARCH_CELLS * 100} km of this point")
-    _, cell_lat, cell_lon, rows = best
-    return _monthly(key, rows), cell_lat, cell_lon
-
-
-@dataclass
-class Area:
-    df: pd.DataFrame  # monthly weighted mean
-    cells: int  # cells with data
-    coverage: float  # share of the area (frac * cos lat) that has data
-
-
 # share of each grid cell inside a box; west > east means the box crosses 180 degrees
 def box_fractions(lat: np.ndarray, lon: np.ndarray, south: float, north: float, west: float, east: float) -> np.ndarray:
     dlat, dlon = abs(lat[1] - lat[0]), abs(lon[1] - lon[0])
@@ -197,43 +142,6 @@ def box_fractions(lat: np.ndarray, lon: np.ndarray, south: float, north: float, 
     spans = [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
     lon_frac = sum(overlap(lon, dlon, w, e) for w, e in spans)
     return overlap(lat, dlat, south, north)[:, None] * lon_frac[None, :]
-
-
-def _cells(frac: np.ndarray) -> pd.DataFrame:
-    i, j = np.nonzero(frac >= MIN_FRAC)
-    return pd.DataFrame({"lat": LAT[i], "lon": LON[j], "frac": frac[i, j]})
-
-
-def _area(key: str, cells: pd.DataFrame, where: str) -> Area:
-    # mean over cells weighted by frac * cos(lat) * valid_frac; only the latitude bands involved are read
-    cells = cells.assign(area=cells["frac"] * np.cos(np.deg2rad(cells["lat"])))
-    bands = list(cells.groupby("lat"))
-    _grid_file(key)  # footer first, so the threads share it
-
-    def read(item):
-        band_lat, wanted = item
-        band = _band(key, float(band_lat), own_handle=len(bands) > 1)
-        return band.astype({"lon": "float64"}).merge(wanted[["lon", "area"]], on="lon").assign(lat=band_lat)
-
-    with ThreadPoolExecutor(READERS) as pool:
-        frames = [f for f in pool.map(read, bands) if not f.empty]
-    rows = pd.concat(frames) if frames else pd.DataFrame()
-    if rows.empty:
-        raise DatasetError(f"No {variable(key)['name']} data {where}")
-    # ocean grids leave valid_frac empty: their cells count in full
-    weight = rows["area"] * rows["valid_frac"].astype("float64").fillna(1.0)
-    sums = pd.DataFrame({"date": rows["date"], "value": rows["value"] * weight, "weight": weight}).groupby("date").sum()
-    mean = (sums["value"] / sums["weight"]).rename("value").reset_index()
-    covered = rows.drop_duplicates(["lat", "lon"])
-    _release()
-    return Area(_monthly(key, mean), len(covered), float(covered["area"].sum() / cells["area"].sum()))
-
-
-def area_series(key: str, south: float, north: float, west: float, east: float) -> Area:
-    cells = _cells(box_fractions(LAT, LON, south, north, west, east))
-    if cells.empty:
-        raise DatasetError("The area is empty")
-    return _area(key, cells, "inside this area")
 
 
 @lru_cache
@@ -261,40 +169,6 @@ def region(rid: str) -> dict:
 def region_cells(rid: str) -> pd.DataFrame:
     region(rid)
     return _region_weights().loc[[rid]].reset_index(drop=True)
-
-
-def region_series(key: str, rid: str) -> Area:
-    return _area(key, region_cells(rid), f"in {region(rid)['name']}")
-
-
-def regions_cells(ids: list[str]) -> pd.DataFrame:
-    ids = list(dict.fromkeys(ids))
-    chosen = pd.DataFrame([region(rid) for rid in ids])
-    countries = set(chosen.loc[chosen["kind"] == "country", "id"])
-    nested = chosen[(chosen["kind"] == "admin1") & chosen["country"].isin(countries)]
-    if not nested.empty:
-        raise ValueError(f"{nested.iloc[0]['name']} lies inside a selected country; pick the country or its regions, not both")
-    cells = _region_weights().loc[ids].reset_index(drop=True).groupby(["lat", "lon"], as_index=False)["frac"].sum()
-    # neighbours share cells along their borders, and their shares add up to at most the whole cell
-    cells["frac"] = cells["frac"].clip(upper=1.0)
-    return cells
-
-
-def regions_label(ids: list[str], shown: int = 3) -> str:
-    names = [region(rid)["name"] for rid in dict.fromkeys(ids)]
-    return ", ".join(names) if len(names) <= shown else f"{', '.join(names[:shown])} and {len(names) - shown} more"
-
-
-def regions_series(key: str, ids: list[str]) -> Area:
-    return _area(key, regions_cells(ids), "in the selected regions")
-
-
-def _monthly(key: str, rows: pd.DataFrame) -> pd.DataFrame:
-    factor = variable(key)["factor"]
-    df = pd.DataFrame(
-        {"time": pd.to_datetime(rows["date"]).dt.tz_localize("UTC"), "value": rows["value"].astype("float64") * factor}
-    )
-    return df.sort_values("time").reset_index(drop=True)
 
 
 def quantile_abs(values: np.ndarray, q: float) -> float:

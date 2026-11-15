@@ -6,7 +6,6 @@ import { divergingColor, type Rgb } from "@/features/trendmap/styles";
 import { formatSigned } from "@/lib/format";
 
 const NO_TREND: Rgb = [120, 126, 136];
-const PLAIN: Rgb = [143, 176, 207];
 const MIN_LIGHT = 0.42;
 
 export type StationStyle = { colors: Float32Array; kinds: Float32Array };
@@ -32,17 +31,6 @@ export function trendStyle(list: StationList, stops: Rgb[], scale: number, onlyS
     }
     put(colors, k, divergingColor(stops, slope, scale || 1));
     kinds[k] = list.significant[k] ? STATION_STRONG : onlySignificant ? STATION_HIDDEN : STATION_PLAIN;
-  }
-  return { colors, kinds };
-}
-
-export function plainStyle(list: StationList): StationStyle {
-  const n = list.ids.length;
-  const colors = new Float32Array(n * 3);
-  const kinds = new Float32Array(n);
-  for (let k = 0; k < n; k++) {
-    put(colors, k, PLAIN);
-    kinds[k] = list.n_years[k] >= list.min_years ? STATION_PLAIN : STATION_FAINT;
   }
   return { colors, kinds };
 }

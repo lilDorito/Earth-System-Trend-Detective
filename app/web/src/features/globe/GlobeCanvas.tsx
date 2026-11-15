@@ -682,6 +682,10 @@ export default function GlobeCanvas({
         )}
       />
       <AnimatePresence>{status && <Loading key={status} label={status} shift={viewShift} />}</AnimatePresence>
+      {/* an invisible square over the globe's middle, for the tutorial to point at */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div data-tour="globe" className="size-[min(260px,40vmin)]" style={{ transform: `translate(${-viewShift.x}px, ${-viewShift.y}px)` }} />
+      </div>
       {onBox && ready && (
         <div
           style={insets}
@@ -728,7 +732,7 @@ export default function GlobeCanvas({
           >
             {([
               [false, Square, "One", "A click picks one region and replaces the previous one"],
-              [true, Layers, "Several", "A click adds a region to the selection, or removes it; Investigate averages them all"],
+              [true, Layers, "Several", "A click adds a region to the selection, or takes it out; the panel averages them all"],
             ] as const).map(([several, Icon, label, title]) => (
               <button
                 key={label}

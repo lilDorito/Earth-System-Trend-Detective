@@ -1,12 +1,7 @@
 // HTTP client for the FastAPI backend
 
 import type {
-  AnalyzeRequest,
-  AnalyzeResponse,
-  Demo,
   GlobalMean,
-  Region,
-  RegionType,
   StationCompare,
   StationElementKey,
   StationList,
@@ -19,13 +14,9 @@ import type {
   TrendVariable,
   FlowField,
   TrendFlow,
-  VariableInfo,
-  Diagnosis,
-  Divergence,
-  Hotspots,
   InsightPlace,
+  Diagnosis,
   Scan,
-  Scenario,
   Co2Series,
 } from "./types";
 
@@ -92,10 +83,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const httpApi = {
   health: () => request<{ status: string; data_mode: string; variables: number }>("/api/health"),
-  variables: () => request<VariableInfo[]>("/api/variables"),
-  regions: () => request<Record<string, Region>>("/api/regions"),
-  regionTypes: () => request<Record<string, RegionType>>("/api/region-types"),
-  demos: () => request<Demo[]>("/api/demos"),
   trendVariables: () => request<TrendVariable[]>("/api/trendmap/variables"),
   trendMeta: (variable: string) => request<TrendMeta>(`/api/trendmap/meta?${query({ variable })}`),
   trendGrid: (variable: string) => request<TrendGrid>(`/api/trendmap/grid?${query({ variable })}`),
@@ -107,11 +94,10 @@ export const httpApi = {
   insightDiagnose: (variable: string, place: InsightPlace) =>
     request<Diagnosis>(`/api/insights/diagnose?${query({ variable })}&${placeQuery(place)}`),
   trendCo2: () => request<Co2Series>("/api/trendmap/co2"),
-  insightScenarios: () => request<Scenario[]>("/api/insights/scenarios"),
-  insightHotspots: (scenario: string) => request<Hotspots>(`/api/insights/hotspots?${query({ scenario })}`),
-  insightDivergence: (variable: string) => request<Divergence>(`/api/insights/divergence?${query({ variable })}`),
   trendRegion: (variable: string, region: TrendRegionQuery) => {
-    const where: Record<string, string> = region.name
+    const where: Record<string, string> = region.names
+      ? { names: region.names.join(",") }
+      : region.name
       ? { name: region.name }
       : {
           ...Object.fromEntries(
@@ -128,8 +114,6 @@ export const httpApi = {
   stations: (element: StationElementKey) => request<StationList>(`/api/stations?${query({ element })}`),
   stationCompare: (id: string, variable: string | null, element: StationElementKey) =>
     request<StationCompare>(`/api/stations/compare?${query(variable ? { id, element, variable } : { id, element })}`),
-  analyze: (body: AnalyzeRequest) =>
-    request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
 };
 
 export type Api = typeof httpApi;

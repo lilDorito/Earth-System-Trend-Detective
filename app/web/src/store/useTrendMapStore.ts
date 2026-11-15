@@ -7,10 +7,8 @@ import { REGIONS, type RegionName } from "@/api/regions";
 import type {
   BBox,
   Boundary,
-  Divergence,
   GlobalMean,
   StationCompare,
-  Hotspots,
   InsightPlace,
   TrendFrames,
   TrendGrid,
@@ -25,6 +23,8 @@ import { elementFor } from "@/features/stations/elements";
 import { useStationStore } from "@/store/useStationStore";
 import { useCo2Store } from "@/store/useCo2Store";
 import { boundaryLabel, fitDistance } from "@/features/globe/boundaries";
+import { countryAt } from "@/features/globe/countryAt";
+import { plainName } from "@/lib/summary";
 import type { Area } from "@/features/globe/useOutline";
 
 export type View = "trend" | "years"; // one map for the whole period | one map per year
@@ -33,10 +33,20 @@ export type Display = "trend" | "values"; // change (trend, anomalies) | the val
 export type RegionTarget =
   | { kind: "preset"; name: RegionName }
   | { kind: "boundary"; boundary: Boundary }
-  | { kind: "box"; box: BBox; name?: string };
+  | { kind: "box"; box: BBox; name?: string }
+  | { kind: "boundaries"; boundaries: Boundary[] }; // several regions averaged as one area
+
+// the box around several regions (west > east when they straddle 180 degrees is not handled: rare for a pick)
+const around = (list: Boundary[]) => ({
+  south: Math.min(...list.map((b) => b.south)),
+  north: Math.max(...list.map((b) => b.north)),
+  west: Math.min(...list.map((b) => b.west)),
+  east: Math.max(...list.map((b) => b.east)),
+});
 
 export function targetArea(target: RegionTarget): Area {
   if (target.kind === "box") return { kind: "box", box: target.box };
+  if (target.kind === "boundaries") return { kind: "regions", boundaries: target.boundaries };
   if (target.kind === "boundary") return { kind: "region", boundary: target.boundary };
   const preset = REGIONS[target.name];
   const [south, north, west, east] = preset.bbox;
@@ -48,11 +58,16 @@ export function targetArea(target: RegionTarget): Area {
 export function targetLabel(target: RegionTarget): string {
   if (target.kind === "boundary") return boundaryLabel(target.boundary);
   if (target.kind === "box") return target.name ?? "Custom area";
+  if (target.kind === "boundaries") {
+    const names = target.boundaries.map((b) => b.name);
+    return names.length <= 3 ? names.join(", ") : `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
+  }
   return REGIONS[target.name].label;
 }
 
 export function targetPlace(target: RegionTarget): InsightPlace {
   if (target.kind === "boundary") return { region: target.boundary.id };
+  if (target.kind === "boundaries") return { regions: target.boundaries.map((b) => b.id).join(",") };
   if (target.kind === "box") return { south: target.box.south, north: target.box.north, west: target.box.west, east: target.box.east };
   const preset = REGIONS[target.name];
   if ("boundary" in preset && preset.boundary) return { region: preset.boundary };
@@ -91,10 +106,6 @@ type TrendMapState = {
   picked: { lat: number; lon: number; name?: string } | null;
   selected: TrendPoint | null;
 
-  hotspot: Hotspots | null;
-  hotspotLoading: string | null;
-  divergence: Divergence | null;
-  divergenceArea: number | null; // the area outlined on the globe
   pointLoading: boolean;
   pointError: string | null;
 
@@ -119,9 +130,6 @@ type TrendMapState = {
   setShowStations: (on: boolean) => void;
   selectStation: (id: string) => Promise<void>;
   clearStation: () => void;
-  setHotspot: (scenario: string | null) => Promise<void>;
-  findDivergence: () => Promise<void>;
-  showArea: (id: number | null) => void;
   focusOn: (lat: number, lon: number, distance: number) => void;
 };
 
@@ -173,10 +181,6 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   station: null,
   stationLoading: false,
   stationError: null,
-  hotspot: null,
-  hotspotLoading: null,
-  divergence: null,
-  divergenceArea: null,
 
   async load() {
     if (get().loading || get().grid) return;
@@ -193,7 +197,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
 
   async setVariable(variable) {
     const id = ++variableRequestId;
-    set({ variable, loading: true, error: null, divergence: null, divergenceArea: null, hotspot: null, hotspotLoading: null });
+    set({ variable, loading: true, error: null });
     const values = get().display === "values";
     // one field for all wind variables and one for all current variables: fetched when the kind changes
     const field = styleFor(variable).flow;
@@ -255,8 +259,11 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
       set({ regionTarget: null, region: null, regionError: null, regionLoading: false });
       return;
     }
+    // a new area takes the CO2 chart's place, as a point or a station does
+    useCo2Store.getState().setOpen(false);
     const previous = get().regionTarget;
-    if (target.kind !== "box" && target !== previous) {
+    // a picked region flies into view; drawn boxes and regions added to a selection are already in view
+    if ((target.kind === "boundary" || target.kind === "preset") && target !== previous) {
       const bounds = target.kind === "boundary" ? target.boundary : boxOf(REGIONS[target.name].bbox);
       const center = target.kind === "boundary" ? target.boundary : boxCenter(bounds);
       set({ focus: { lat: center.lat, lon: center.lon, distance: fitDistance(bounds), id: Date.now() } });
@@ -267,7 +274,9 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
         ? { name: target.name }
         : target.kind === "boundary"
           ? { name: target.boundary.id, box: target.boundary, label: boundaryLabel(target.boundary) }
-          : { box: target.box, label: target.name };
+          : target.kind === "boundaries"
+            ? { names: target.boundaries.map((b) => b.id), box: around(target.boundaries), label: targetLabel(target) }
+            : { box: target.box, label: target.name };
     try {
       const region = await api.trendRegion(get().variable, query);
       if (id === regionRequestId) set({ region, regionLoading: false });
@@ -281,6 +290,22 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
     get().clearStation();
     useCo2Store.getState().setOpen(false);
     set({ picked: { lat, lon, name }, pointLoading: true, pointError: null });
+    // a sea variable clicked on land (or the reverse) says so, instead of quietly showing the nearest coast cell
+    const meta = get().meta;
+    if (meta && (meta.domain === "ocean" || meta.domain === "land")) {
+      const onLand = !!(await countryAt(lat, lon).catch(() => null));
+      if (id !== pointRequestId) return;
+      if (onLand !== (meta.domain === "land")) {
+        const sea = meta.domain === "ocean";
+        const what = plainName(meta.name);
+        set({
+          selected: null,
+          pointLoading: false,
+          pointError: `${what[0].toUpperCase()}${what.slice(1)} is measured only ${sea ? "over the ocean" : "over land"}. Click a point ${sea ? "at sea" : "on land"}, or pick another variable.`,
+        });
+        return;
+      }
+    }
     try {
       const point = await api.trendPoint(get().variable, lat, lon);
       if (id === pointRequestId) set({ selected: point, pointLoading: false });
@@ -322,35 +347,6 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
     set({ stationId: null, station: null, stationLoading: false, stationError: null });
   },
 
-  async setHotspot(scenario) {
-    if (!scenario) {
-      set({ hotspot: null, hotspotLoading: null });
-      return;
-    }
-    set({ hotspotLoading: scenario, showTrend: true, regionError: null });
-    try {
-      const hotspot = await api.insightHotspots(scenario);
-      if (get().hotspotLoading === scenario) set({ hotspot, hotspotLoading: null });
-    } catch (e) {
-      if (get().hotspotLoading === scenario) set({ hotspotLoading: null, regionError: message(e) });
-    }
-  },
-
-  async findDivergence() {
-    const variable = get().variable;
-    try {
-      const divergence = await api.insightDivergence(variable);
-      if (get().variable === variable) set({ divergence, divergenceArea: null });
-    } catch (e) {
-      set({ regionError: message(e) });
-    }
-  },
-
-  showArea(id) {
-    const area = get().divergence?.areas.find((a) => a.id === id);
-    set({ divergenceArea: id });
-    if (area) get().focusOn(area.lat, area.lon, Math.min(3.2, Math.max(1.6, 1 + Math.sqrt(area.area_km2) / 2500)));
-  },
 
   focusOn: (lat, lon, distance) => set({ focus: { lat, lon, distance, id: Date.now() } }),
 }));

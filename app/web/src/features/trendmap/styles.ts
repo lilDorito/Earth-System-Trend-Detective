@@ -47,7 +47,6 @@ const VALUES = {
   fire: [[25, 15, 20], [80, 20, 25], [145, 30, 30], [205, 60, 30], [240, 120, 40], [252, 185, 70], [255, 240, 170]],
 } satisfies Record<string, Stops>;
 
-export const FINGERPRINT: Stops = [[30, 30, 40], [70, 40, 90], [130, 50, 120], [200, 70, 110], [245, 120, 80], [255, 200, 90], [255, 245, 190]];
 
 export type VariableStyle = {
   change: Stops;
@@ -59,10 +58,9 @@ export type VariableStyle = {
   flow?: "wind" | "current"; // particles drift along the mean 10 m wind or surface current
   edge?: number; // values view: a line at this value, first year against the year shown (sea ice edge)
   up: string; // what a rising cell does, for "x% of the region ..."
-  stripes?: string; // name of the per-year stripes
 };
 
-const heat = { change: CHANGE.heat, values: VALUES.thermal, up: "warms", stripes: "Warming stripes" };
+const heat = { change: CHANGE.heat, values: VALUES.thermal, up: "warms" };
 const rain = { change: CHANGE.water, values: VALUES.rain, up: "gets wetter" };
 const soil = { change: CHANGE.water, values: VALUES.soil, up: "gets wetter" };
 const evaporation = { change: CHANGE.water, values: VALUES.rain, up: "evaporates more" };

@@ -1,25 +1,21 @@
 // app shell: header, nav and routes; phones get a bottom tab bar instead of the header links
 
 import { lazy, Suspense, useEffect } from "react";
-import { Link, NavLink, Route, Routes } from "react-router";
-import { BookOpen, Candy, Compass, Earth, Globe, LoaderCircle, Moon, PlayCircle, type LucideIcon } from "lucide-react";
+import { Link, NavLink, Navigate, Route, Routes } from "react-router";
+import { Candy, Earth, GraduationCap, Globe, LoaderCircle, Moon, PlayCircle, type LucideIcon } from "lucide-react";
+import Tutorial, { tourSeen, useTutorial } from "@/components/Tutorial";
 import { usingMockData } from "@/api";
 import { Status } from "@/components/ui/status";
 import { setTheme, useThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { useCatalogStore } from "@/store/useCatalogStore";
 
-const ExplorerPage = lazy(() => import("@/pages/ExplorerPage"));
 const TrendMapPage = lazy(() => import("@/pages/TrendMapPage"));
 const DemosPage = lazy(() => import("@/pages/DemosPage"));
-const LearnPage = lazy(() => import("@/pages/LearnPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 const links: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/", label: "Explore", icon: Compass },
-  { to: "/map", label: "Trend map", icon: Globe },
+  { to: "/", label: "Trend map", icon: Globe },
   { to: "/demos", label: "Demos", icon: PlayCircle },
-  { to: "/learn", label: "Learn", icon: BookOpen },
 ];
 
 // phones only for now: the marshmallow theme does not apply on wider screens yet
@@ -41,11 +37,12 @@ function ThemeSwitch() {
 }
 
 function Header() {
+  const startTour = useTutorial((s) => s.start);
   return (
     <header className="flex h-11 shrink-0 items-stretch gap-6 border-b px-3 sm:px-5">
       <Link to="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
         <Earth className="size-4 text-primary" />
-        <span>Earth Trend Detective</span>
+        <span>Is Earth okay?</span>
       </Link>
       <nav className="hidden sm:flex items-stretch gap-5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {links.map((link) => (
@@ -65,6 +62,16 @@ function Header() {
         ))}
       </nav>
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={startTour}
+          data-tour="tutorial"
+          title="A short tour of what to do where"
+          className="flex cursor-pointer items-center gap-1.5 rounded-sm px-1.5 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <GraduationCap className="size-4" />
+          <span>Tutorial</span>
+        </button>
         {usingMockData && (
           <Status tone="warning" title="Synthetic data generated in the browser">
             mock data
@@ -80,7 +87,7 @@ function TabBar() {
   return (
     <nav
       aria-label="Main"
-      className="grid shrink-0 grid-cols-4 border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden"
+      className="grid shrink-0 grid-cols-2 border-t bg-card pb-[env(safe-area-inset-bottom)] sm:hidden"
     >
       {links.map(({ to, label, icon: Icon }) => (
         <NavLink
@@ -111,11 +118,13 @@ function PageFallback() {
 }
 
 export default function App() {
-  const loadCatalog = useCatalogStore((s) => s.load);
-
+  const startTour = useTutorial((s) => s.start);
+  // the first visit starts with the tour, once the map has had a moment to appear
   useEffect(() => {
-    void loadCatalog();
-  }, [loadCatalog]);
+    if (tourSeen()) return;
+    const t = setTimeout(startTour, 1200);
+    return () => clearTimeout(t);
+  }, [startTour]);
 
   return (
     <div className="flex h-dvh flex-col pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
@@ -123,15 +132,15 @@ export default function App() {
       <main className="min-h-0 flex-1">
         <Suspense fallback={<PageFallback />}>
           <Routes>
-            <Route path="/" element={<ExplorerPage />} />
-            <Route path="/map" element={<TrendMapPage />} />
+            <Route path="/" element={<TrendMapPage />} />
+            <Route path="/map" element={<Navigate to="/" replace />} />
             <Route path="/demos" element={<DemosPage />} />
-            <Route path="/learn" element={<LearnPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
       </main>
       <TabBar />
+      <Tutorial />
     </div>
   );
 }

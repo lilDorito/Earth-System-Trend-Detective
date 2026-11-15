@@ -5,7 +5,6 @@ import io
 import warnings
 
 import numpy as np
-from scipy import ndimage
 
 from . import dataset, gridtrends
 from .insights import JUMP_GAIN
@@ -13,9 +12,6 @@ from .insights import JUMP_GAIN
 BASELINE_YEARS = 5  # anomalies are relative to the mean of the first years of the period
 FRAME_STEP_DEG = 2.0  # year maps are sent coarser; the globe smooths them anyway
 VERSION = 2  # bump when the products change, so files from an older build are ignored
-CELL_KM2 = 111.195**2  # one square degree at the equator
-CLUSTERS_KEPT = 8  # largest areas of each sign
-MIN_CLUSTER_KM2 = 150_000  # smaller patches of one sign are noise at this resolution
 NINO34 = (-5.0, 5.0, -170.0, -120.0)  # south, north, west, east
 # eastward and northward parts of the fields drawn as drifting streaks
 FLOWS = {"wind": ("merra2_u10m", "merra2_v10m"), "current": ("u_current", "v_current")}
@@ -77,41 +73,6 @@ def cell_stats(values: np.ndarray, years: np.ndarray, slope: np.ndarray) -> tupl
     return sigma, step
 
 
-def clusters(slope: np.ndarray, sig: np.ndarray) -> dict[str, np.ndarray]:
-    area_cell = np.cos(np.deg2rad(dataset.LAT))[:, None] * CELL_KM2 * np.ones_like(slope)
-    labels = np.zeros(slope.shape, dtype=np.int16)
-    rows = []
-    for sign in (1, -1):
-        mask = sig.astype(bool) & np.isfinite(slope) & (np.sign(slope) == sign)
-        lab, count = ndimage.label(mask, structure=np.ones((3, 3)))
-        # an area crossing 180 degrees is two labels touching across the edge columns: merge them
-        for a, b in zip(lab[:, 0], lab[:, -1]):
-            if a and b and a != b:
-                lab[lab == b] = a
-        for i in np.unique(lab[lab > 0]):
-            cells = lab == i
-            area = float(area_cell[cells].sum())
-            if area < MIN_CLUSTER_KM2:
-                continue
-            w = area_cell[cells]
-            ii, jj = np.nonzero(cells)
-            # centroid as a mean direction, so an area across 180 degrees does not average to 0
-            lon_rad = np.deg2rad(dataset.LON[jj])
-            clon = float(np.rad2deg(np.arctan2((w * np.sin(lon_rad)).sum(), (w * np.cos(lon_rad)).sum())))
-            rows.append((sign, area, float((w * slope[cells]).sum() / w.sum()), float((w * dataset.LAT[ii]).sum() / w.sum()), clon, cells))
-    rows = [r for sign in (1, -1) for r in sorted((r for r in rows if r[0] == sign), key=lambda r: -r[1])[:CLUSTERS_KEPT]]
-    for k, row in enumerate(rows, start=1):
-        labels[row[5]] = k
-    return {
-        "cluster_labels": labels,
-        "cluster_sign": np.array([r[0] for r in rows], dtype=np.int8),
-        "cluster_area": np.array([r[1] for r in rows], dtype=np.float32),
-        "cluster_slope": np.array([r[2] for r in rows], dtype=np.float32),
-        "cluster_lat": np.array([r[3] for r in rows], dtype=np.float32),
-        "cluster_lon": np.array([r[4] for r in rows], dtype=np.float32),
-    }
-
-
 def build(key: str) -> dict[str, np.ndarray]:
     annual = dataset.annual(key)
     lat, lon, values = dataset.LAT, dataset.LON, annual.values
@@ -138,7 +99,6 @@ def build(key: str) -> dict[str, np.ndarray]:
         "p": p.astype(np.float32),
         "sigma": sigma,
         "step": step,
-        **clusters(slope, sig),
     }
 
 

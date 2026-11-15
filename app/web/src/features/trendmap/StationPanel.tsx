@@ -10,15 +10,19 @@ import { Panel, PanelSection } from "@/components/ui/panel";
 import { Status } from "@/components/ui/status";
 import { palette } from "@/features/charts/Chart";
 import StationChart from "@/features/stations/StationChart";
+import ChartTitle from "@/features/charts/ChartTitle";
+import { InfoTip } from "@/components/ui/info-tip";
 import { formatLatLon, formatP, formatSigned } from "@/lib/format";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 const GRID_COLOR = "#d9b45a";
 
-function Stat({ label, value, units }: { label: string; value: string; units?: string }) {
+function Stat({ label, value, units, tip }: { label: string; value: string; units?: string; tip: string }) {
   return (
     <div>
-      <Label>{label}</Label>
+      <Label className="flex items-center gap-1">
+        {label} <InfoTip>{tip}</InfoTip>
+      </Label>
       <p className="font-mono text-[13px] tabular-nums">
         {value} {units && <span className="text-muted-foreground">{units}</span>}
       </p>
@@ -72,16 +76,12 @@ export default function StationPanel({ station, loading }: { station: StationCom
                 <span className="text-sm text-muted-foreground">{units} / decade at the station</span>
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1">
-                <Status tone={st.significant ? "success" : "muted"}>
-                  MK p {st.p < 0.001 ? "" : "= "}
-                  {formatP(st.p)}
-                </Status>
-                {st.significant_fdr !== undefined && (
-                  <Status tone={st.significant_fdr ? "success" : "muted"}>
-                    {st.significant_fdr ? "significant" : "not significant"} at FDR 5%
-                  </Status>
+                {st.significant && (
+                  <span title={`Mann-Kendall p ${st.p < 0.001 ? "" : "= "}${formatP(st.p)}`}>
+                    <Status tone="success">statistically significant</Status>
+                  </span>
                 )}
-                <Status tone="muted">{st.n_years} years</Status>
+                <Status tone="muted">{st.n_years} years of data</Status>
               </div>
             </>
           ) : (
@@ -93,29 +93,32 @@ export default function StationPanel({ station, loading }: { station: StationCom
 
         {grid && (
           <PanelSection className="grid grid-cols-2 gap-x-4 gap-y-2">
-            <Stat label="Grid cell" value={grid.trend ? formatSigned(grid.trend.slope_decade) : "–"} units={`${units}/dec`} />
+            <Stat label="Satellite data" tip="The trend of the grid cell around the station, over the same years. The data come as a map of squares about 110 km across, one degree of latitude by one of longitude. Each square is a grid cell, with one value per year." value={grid.trend ? formatSigned(grid.trend.slope_decade) : "–"} units={`${units}/dec`} />
             <Stat
-              label="Station − grid"
+              label="Difference"
+              tip="Station trend minus satellite trend. Near zero: they agree."
               value={grid.difference_decade !== undefined ? formatSigned(grid.difference_decade) : "–"}
               units={`${units}/dec`}
             />
-            <Stat label="Correlation" value={grid.r !== null ? grid.r.toFixed(2) : "–"} units={`${grid.common_years} yrs`} />
-            <Stat label="Cell" value={`${grid.distance_km} km`} units="away" />
+            <Stat label="Match" tip="How closely the two go up and down together, from 0 (not at all) to 1 (perfectly)." value={grid.r !== null ? grid.r.toFixed(2) : "–"} units={`${grid.common_years} yrs`} />
+            <Stat label="Distance" tip="From the station to the centre of its grid cell, the 110 km square it sits in." value={`${grid.distance_km} km`} units="away" />
             <p className="col-span-2 text-[11px] leading-snug text-muted-foreground">
-              {grid.name}, cell {formatLatLon(grid.lat, grid.lon)}. Both series are annual anomalies from their own mean over the
-              years they share; the grid trend uses only the years the station has.
+              {grid.name}, cell {formatLatLon(grid.lat, grid.lon)}.
             </p>
           </PanelSection>
         )}
 
         <PanelSection>
+          <ChartTitle title="Station against satellite data" tip="The data come as a map of squares about 110 km across, one degree of latitude by one of longitude. Each square is a grid cell, with one value per year. Both lines show the difference from their own average, so they can be compared.">
+            How much each year was above or below normal ({units}), on the ground and in the 110 km square around the station.
+          </ChartTitle>
           <StationChart
             years={station.years}
             units={units}
             height={window.matchMedia("(max-width: 639px)").matches ? 160 : 200}
             lines={[
               { name: "Station", values: station.station, fitted: st?.fitted, color: palette.series },
-              ...(grid ? [{ name: "Grid cell", values: grid.values, fitted: grid.trend?.fitted, color: GRID_COLOR }] : []),
+              ...(grid ? [{ name: "Satellite (grid cell)", values: grid.values, fitted: grid.trend?.fitted, color: GRID_COLOR }] : []),
             ]}
           />
         </PanelSection>

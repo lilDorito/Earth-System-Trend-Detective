@@ -77,5 +77,3 @@ def test_scan_and_diagnose_endpoints(built):
     d = client.get("/api/insights/diagnose", params={"variable": "fake_t2m", "region": "tst"}).json()
     assert d["slope_decade"] == pytest.approx(0.5, abs=0.02) and d["robust"]["stable"]
     assert client.get("/api/insights/diagnose", params={"variable": "fake_t2m", "region": "nope"}).status_code == 404
-    areas = client.get("/api/insights/divergence", params={"variable": "fake_t2m"}).json()
-    assert len(areas["labels"]) == 180 * 360

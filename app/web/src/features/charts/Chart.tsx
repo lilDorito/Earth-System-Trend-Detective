@@ -14,6 +14,7 @@ import {
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
 import ReactEChartsCore from "echarts-for-react/esm/core";
+import type { ECharts } from "echarts/core";
 import { formatAxis } from "@/lib/format";
 import { usePhoneTheme } from "@/lib/theme";
 
@@ -45,14 +46,15 @@ const tooltipLook = { background: "#16181c", border: "rgba(255,255,255,0.12)", t
 export const baseOption: EChartsOption = {
   backgroundColor: "transparent",
   animationDuration: 400,
-  textStyle: { color: palette.text, fontFamily: MONO, fontSize: 10 },
+  textStyle: { color: palette.text, fontFamily: MONO, fontSize: 11 },
   tooltip: {
     trigger: "axis",
+    confine: true,
     backgroundColor: tooltipLook.background,
     borderColor: tooltipLook.border,
     borderRadius: 3,
     padding: [6, 8],
-    textStyle: { color: tooltipLook.text, fontSize: 11, fontFamily: MONO },
+    textStyle: { color: tooltipLook.text, fontSize: 12, fontFamily: MONO },
     axisPointer: { lineStyle: { color: tooltipLook.pointer } },
   },
 };
@@ -86,26 +88,60 @@ function recolor<T>(value: T): T {
 export const valueAxis = {
   type: "value" as const,
   scale: true,
-  nameTextStyle: { color: palette.text, align: "left" as const },
-  axisLabel: { color: palette.text, formatter: formatAxis },
+  nameTextStyle: { color: palette.text, align: "left" as const, fontSize: 11 },
+  axisLabel: { color: palette.text, formatter: formatAxis, fontSize: 11 },
   splitLine: { lineStyle: { color: palette.split } },
 };
 
+// every chart with an x axis zooms with the mouse wheel (or a pinch) and pans with a drag
+const ZOOM = { type: "inside" as const, xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false, minValueSpan: 3 };
+
+// a legend stays on one line: long names are cut short (the full name shows on hover) and arrows page through
+// the rest, so it never wraps onto the plot; the plot starts far enough below it for the unit label to fit
+function tidyLegend(option: EChartsOption): EChartsOption {
+  const legend = option.legend;
+  if (!legend || Array.isArray(legend)) return option;
+  const grid = option.grid && !Array.isArray(option.grid) ? option.grid : null;
+  return {
+    ...option,
+    legend: {
+      ...legend,
+      type: "scroll",
+      right: 0,
+      pageIconColor: palette.text,
+      pageIconInactiveColor: palette.axis,
+      pageIconSize: 9,
+      pageTextStyle: { color: palette.text },
+      textStyle: { ...(legend.textStyle as object), width: 170, overflow: "truncate" },
+      tooltip: { show: true },
+    },
+    grid: grid ? { ...grid, top: Math.max(Number(grid.top ?? 0), 46) } : grid ?? undefined,
+  };
+}
+
+// double-click goes back to the whole period
+function resetOnDoubleClick(chart: ECharts) {
+  chart.getZr().on("dblclick", () => chart.dispatchAction({ type: "dataZoom", start: 0, end: 100 }));
+}
+
 // vertical swipes scroll the page instead of getting stuck on a chart; pinch and sideways drags still zoom and pan it
-export default function Chart({ option, height }: { option: EChartsOption; height: number }) {
+export default function Chart({ option, height, zoom = true }: { option: EChartsOption; height: number; zoom?: boolean }) {
   const marshmallow = usePhoneTheme();
-  const shown = useMemo(
-    () => (marshmallow ? recolor({ ...option, tooltip: { ...(option.tooltip as object), borderRadius: 10 } }) : option),
-    [option, marshmallow],
-  );
+  const shown = useMemo(() => {
+    const withZoom = tidyLegend(zoom && option.xAxis && !option.dataZoom ? { ...option, dataZoom: [ZOOM] } : option);
+    return marshmallow ? recolor({ ...withZoom, tooltip: { ...(withZoom.tooltip as object), borderRadius: 10 } }) : withZoom;
+  }, [option, marshmallow, zoom]);
   return (
-    <ReactEChartsCore
-      echarts={echarts}
-      option={shown}
-      notMerge
-      lazyUpdate
-      className="touch-pan-y [&_*]:touch-pan-y!"
-      style={{ height, width: "100%" }}
-    />
+    <div title={zoom ? "Scroll to zoom, drag to move, double-click to see everything" : undefined}>
+      <ReactEChartsCore
+        echarts={echarts}
+        option={shown}
+        notMerge
+        lazyUpdate
+        onChartReady={zoom ? resetOnDoubleClick : undefined}
+        className="touch-pan-y [&_*]:touch-pan-y!"
+        style={{ height, width: "100%" }}
+      />
+    </div>
   );
 }

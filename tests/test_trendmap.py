@@ -101,8 +101,7 @@ def test_region_endpoint():
     r = client.get("/api/trendmap/region?name=ukraine&start=2000&end=2024")
     assert r.status_code == 200
     d = r.json()
-    assert d["n_cells"] > 4 and len(d["years"]) == len(d["stripes"]) == 25
-    assert abs(sum(d["stripes"])) < 0.05  # stripes are deviations from the period mean
+    assert d["n_cells"] > 4 and len(d["years"]) == len(d["mean"]) == 25
     assert d["trend"] in ("increasing", "decreasing", "no trend")
     arctic = client.get("/api/trendmap/region?name=arctic&start=2000&end=2024").json()
     tropics = client.get("/api/trendmap/region?name=tropics&start=2000&end=2024").json()

@@ -2,10 +2,6 @@
 
 export const mean = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
-export function variance(values: number[]) {
-  const m = mean(values);
-  return values.reduce((sum, v) => sum + (v - m) ** 2, 0) / (values.length - 1);
-}
 
 export function linearFit(x: number[], y: number[]) {
   const n = x.length;

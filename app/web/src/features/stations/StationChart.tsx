@@ -50,7 +50,7 @@ export default function StationChart({ years, lines, units, height = 200 }: { ye
       itemHeight: 2,
       icon: "rect",
     },
-    grid: { left: 0, right: 4, top: 28, bottom: 0, containLabel: true },
+    grid: { left: 0, right: 4, top: 40, bottom: 0, containLabel: true },
     xAxis: {
       type: "category",
       data: years,
@@ -58,7 +58,7 @@ export default function StationChart({ years, lines, units, height = 200 }: { ye
       axisLine: { lineStyle: { color: palette.axis } },
       axisLabel: { color: palette.text, hideOverlap: true },
     },
-    yAxis: { ...valueAxis, splitNumber: 4 },
+    yAxis: { ...valueAxis, splitNumber: 4, name: units },
     series,
   };
 

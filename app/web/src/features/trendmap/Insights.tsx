@@ -1,14 +1,12 @@
-// insight sections of the point and region panels: trust checks, significance, what else changes there
+// the extra sections of the point and region panels: quick analysis and what else changes there
 
 import { useEffect, useState } from "react";
-import { ChevronDown, LoaderCircle } from "lucide-react";
-import type { EChartsOption } from "echarts";
+import { LoaderCircle } from "lucide-react";
 import { api } from "@/api";
 import type { Diagnosis, InsightPlace, Scan } from "@/api/types";
-import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PanelSection } from "@/components/ui/panel";
-import Chart, { baseOption, palette } from "@/features/charts/Chart";
-import { formatNumber, formatP, formatSigned } from "@/lib/format";
+import { formatP, formatSigned } from "@/lib/format";
 import { plainName } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
@@ -36,159 +34,6 @@ function useLoad<T>(key: string | null, load: () => Promise<T>): Loaded<T> {
 }
 
 const placeKey = (place: InsightPlace) => JSON.stringify(place);
-
-function Check({ tone, title, children }: { tone: "good" | "warn" | "neutral"; title: string; children: React.ReactNode }) {
-  const mark = { good: "✓", warn: "!", neutral: "·" }[tone];
-  return (
-    <li className="flex gap-2.5">
-      <span
-        className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-semibold",
-          tone === "good" && "bg-success/15 text-success",
-          tone === "warn" && "bg-warning/15 text-warning",
-          tone === "neutral" && "bg-muted text-muted-foreground",
-        )}
-      >
-        {mark}
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm">{title}</p>
-        <p className="text-xs leading-snug text-muted-foreground">{children}</p>
-      </div>
-    </li>
-  );
-}
-
-function TrustChecks({ d }: { d: Diagnosis }) {
-  const shifted = d.robust.shifted;
-  const range = shifted.length
-    ? `${formatSigned(Math.min(...shifted.map((s) => s.slope)) * 10)} to ${formatSigned(Math.max(...shifted.map((s) => s.slope)) * 10)}`
-    : "";
-  return (
-    <ul className="space-y-2.5">
-      {d.agreement && (
-        <Check tone={d.agreement.agree ? "good" : "warn"} title={d.agreement.agree ? "Independent product agrees" : "Independent product disagrees"}>
-          {plainName(d.agreement.name)} ({d.agreement.name.match(/\(([^)]+)\)/)?.[1] ?? "other product"}): {formatSigned(d.agreement.slope_decade)}{" "}
-          against {formatSigned(d.agreement.own_slope_decade)} {d.units} / decade over the same cells
-          {d.agreement.ratio && !d.agreement.agree && Math.sign(d.agreement.ratio) > 0
-            ? `, ${formatNumber(Math.max(d.agreement.ratio, 1 / d.agreement.ratio))}x apart`
-            : ""}
-          .
-        </Check>
-      )}
-      <Check
-        tone={d.jump.likely ? "warn" : "good"}
-        title={d.jump.likely ? `Looks like a jump around ${d.jump.year}` : "A steady trend, not a jump"}
-      >
-        {d.jump.likely
-          ? `One shift of ${formatSigned(d.jump.shift)} ${d.units} fits the years better than a straight line. A new instrument or model change can do that.`
-          : "A straight line fits the years better than a single shift."}
-      </Check>
-      <Check tone={d.robust.stable ? "good" : "warn"} title={d.robust.stable ? "Holds when the start year moves" : "Depends on the start year"}>
-        Starting 1-{shifted.length} years later gives {range} {d.units} / decade.
-      </Check>
-      {d.enso && (
-        <Check tone={d.enso.explained > 0.2 ? "warn" : "neutral"} title={`El Niño explains ${Math.round(d.enso.explained * 100)}% of the ups and downs`}>
-          With ENSO accounted for the trend is {formatSigned(d.enso.trend_without_enso)} instead of {formatSigned(d.enso.trend)} {d.units} / decade.
-        </Check>
-      )}
-    </ul>
-  );
-}
-
-function Growth({ d }: { d: Diagnosis }) {
-  const option: EChartsOption = {
-    ...baseOption,
-    grid: { left: 0, right: 8, top: 8, bottom: 0, containLabel: true },
-    tooltip: { ...(baseOption.tooltip as object), valueFormatter: (v) => (typeof v === "number" ? `p = ${formatP(v)}` : "–") },
-    xAxis: { type: "category", data: d.growth.map((g) => g.end), axisLabel: { color: palette.text, hideOverlap: true }, axisLine: { lineStyle: { color: palette.axis } } },
-    yAxis: {
-      type: "log",
-      min: 1e-4,
-      max: 1,
-      inverse: true,
-      axisLabel: { color: palette.text, formatter: (v: number) => (v >= 0.01 ? String(v) : v.toExponential(0)) },
-      splitLine: { lineStyle: { color: palette.split } },
-    },
-    series: [
-      {
-        type: "line",
-        data: d.growth.map((g) => Math.max(g.p, 1e-4)),
-        showSymbol: false,
-        lineStyle: { width: 2, color: palette.series },
-        itemStyle: { color: palette.series },
-        markLine: { silent: true, symbol: "none", data: [{ yAxis: 0.05 }], lineStyle: { color: palette.trend, type: "dashed" }, label: { formatter: "p = 0.05", color: palette.trend } },
-      },
-    ],
-  };
-  return <Chart option={option} height={130} />;
-}
-
-// p for every start (rows) and end (columns) year: how much a chosen window changes the answer
-function Windows({ d }: { d: Diagnosis }) {
-  const n = d.years.length;
-  const [hover, setHover] = useState<[number, number] | null>(null);
-  const shade = (p: number | null, slope: number | null) => {
-    if (p == null || slope == null) return "transparent";
-    const strength = Math.min(1, -Math.log10(Math.max(p, 1e-4)) / 3); // p 0.001 and below: full colour
-    const [r, g, b] = divergingColor(styleFor(d.key).change, Math.sign(slope) * (0.25 + 0.75 * strength), 1);
-    return `rgba(${r | 0},${g | 0},${b | 0},${p < 0.05 ? 1 : 0.35})`;
-  };
-  const info = hover && d.windows.p[hover[0]][hover[1]] != null
-    ? `${d.years[hover[0]]}-${d.years[hover[1]]}: ${formatSigned((d.windows.slope[hover[0]][hover[1]] ?? 0) * 10)} ${d.units} / decade, p = ${formatP(d.windows.p[hover[0]][hover[1]]!)}`
-    : "Hover a square: start year down, end year across";
-  return (
-    <div>
-      <div className="grid gap-px" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }} onMouseLeave={() => setHover(null)}>
-        {d.windows.p.map((row, a) =>
-          row.map((p, b) => (
-            <div
-              key={`${a}-${b}`}
-              className="aspect-square rounded-[1px]"
-              style={{ background: shade(p, d.windows.slope[a][b]) }}
-              onMouseEnter={() => setHover([a, b])}
-            />
-          )),
-        )}
-      </div>
-      <p className="mt-1.5 font-mono text-[10px] tabular-nums text-muted-foreground">{info}</p>
-    </div>
-  );
-}
-
-function Significance({ d }: { d: Diagnosis }) {
-  const [open, setOpen] = useState(false);
-  const headline = d.significant
-    ? `Significant since the record reached ${d.growth.find((_, i) => d.growth.slice(i).every((h) => h.p < 0.05))?.end ?? d.years[d.years.length - 1]}`
-    : d.years_needed && d.years_needed <= d.years.length
-      ? "On the edge: a few more years would likely settle it"
-      : d.years_needed
-        ? `Needs about ${d.years_needed - d.years.length} more ${d.years_needed - d.years.length === 1 ? "year" : "years"} at this rate`
-      : "No steady trend to wait for";
-  return (
-    <div>
-      <button type="button" onClick={() => setOpen(!open)} className="flex w-full cursor-pointer items-center justify-between gap-2 text-left">
-        <span>
-          <Label>When is it significant?</Label>
-          <span className="mt-0.5 block text-sm">{headline}</span>
-        </span>
-        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div className="mt-3 space-y-3">
-          <div>
-            <p className="mb-1 text-xs text-muted-foreground">p-value as the record grows (below the line: significant)</p>
-            <Growth d={d} />
-          </div>
-          <div>
-            <p className="mb-1.5 text-xs text-muted-foreground">Every start and end year: strong colour where the trend is significant</p>
-            <Windows d={d} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ScanList({ scan, current }: { scan: Scan; current: string }) {
   const setVariable = useTrendMapStore((s) => s.setVariable);
@@ -231,8 +76,7 @@ function ScanList({ scan, current }: { scan: Scan; current: string }) {
       </ul>
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>
-          Bar: change per decade over the usual year-to-year scatter{scan.approximate ? " (approximate for a box)" : ""}. Faded: not
-          significant (FDR 5%).
+          Faded: could be chance.{scan.approximate ? " Approximate for a drawn box or several regions." : ""}
         </span>
         {scan.variables.length > 6 && (
           <button type="button" onClick={() => setAll(!all)} className="shrink-0 cursor-pointer font-mono uppercase tracking-[0.06em] hover:text-foreground">
@@ -255,23 +99,101 @@ function Pending({ loading, error }: { loading: boolean; error: string | null })
   return error ? <p className="text-xs text-warning">{error}</p> : null;
 }
 
+const source = (name: string) => name.match(/\(([^)]+)\)/)?.[1] ?? "another product";
+
+function Check({ good, title, line, tip }: { good: boolean | null; title: string; line: string; tip: string }) {
+  return (
+    <li className="flex gap-2.5">
+      <span
+        className={cn(
+          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-semibold",
+          good === true && "bg-success/15 text-success",
+          good === false && "bg-warning/15 text-warning",
+          good === null && "bg-muted text-muted-foreground",
+        )}
+      >
+        {good === true ? "✓" : good === false ? "!" : "·"}
+      </span>
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-sm">
+          {title} <InfoTip>{tip}</InfoTip>
+        </p>
+        <p className="text-xs leading-snug text-muted-foreground">{line}</p>
+      </div>
+    </li>
+  );
+}
+
+function QuickAnalysis({ d }: { d: Diagnosis }) {
+  const per = `${d.units} per decade`;
+  const shifted = d.robust.shifted.map((x) => x.slope * 10);
+  const since = d.significant ? d.growth.find((_, i) => d.growth.slice(i).every((h) => h.p < 0.05))?.end : null;
+  const more = !d.significant && d.years_needed ? d.years_needed - d.years.length : null;
+  return (
+    <ul className="space-y-2.5">
+      <Check
+        good={d.significant ? true : more ? null : false}
+        title={d.significant ? `Clear since ${since ?? d.years[d.years.length - 1]}` : more && more > 0 ? `Not clear yet: about ${more} more years needed` : "No steady direction"}
+        line={d.significant ? "From then on the change is too steady to be chance." : more ? "At this pace the yearly ups and downs still hide it." : "The values go up and down without a clear direction."}
+        tip="p is the chance that ordinary ups and downs alone would draw a trend this strong. Below 0.05 (1 in 20) we call the trend clear."
+      />
+      <Check
+        good={!d.jump.likely}
+        title={d.jump.likely ? `Looks like one jump around ${d.jump.year}` : "A steady change, not one jump"}
+        line={d.jump.likely ? `The values step by ${formatSigned(d.jump.shift)} ${d.units} once. A new satellite or model can do that.` : "The values drift a little every year."}
+        tip="We compare a straight line with a single step and keep whichever fits the years better."
+      />
+      {shifted.length > 0 && (
+        <Check
+          good={d.robust.stable}
+          title={d.robust.stable ? "Same answer from any start year" : "Depends on the start year"}
+          line={`Starting 1-${shifted.length} years later gives ${formatSigned(Math.min(...shifted))} to ${formatSigned(Math.max(...shifted))} ${per}.`}
+          tip="A real trend should not vanish when the first few years are left out."
+        />
+      )}
+      {d.agreement && (
+        <Check
+          good={d.agreement.agree}
+          title={d.agreement.agree ? "A second dataset agrees" : "A second dataset disagrees"}
+          line={`${source(d.agreement.name)}: ${formatSigned(d.agreement.slope_decade)} against ${formatSigned(d.agreement.own_slope_decade)} ${per}.`}
+          tip="An independent measurement of the same thing, from a different satellite or model."
+        />
+      )}
+      {d.enso && (
+        <Check
+          good={d.enso.explained <= 0.2 ? null : false}
+          title={`El Niño explains ${Math.round(d.enso.explained * 100)}% of the ups and downs`}
+          line={`Without it the trend is ${formatSigned(d.enso.trend_without_enso)} instead of ${formatSigned(d.enso.trend)} ${per}.`}
+          tip="El Niño is a warm swing of the Pacific every few years that shifts weather around the world."
+        />
+      )}
+    </ul>
+  );
+}
+
 export default function Insights({ variable, place }: { variable: string; place: InsightPlace }) {
   const key = placeKey(place);
   const diagnosis = useLoad(`${variable}|${key}`, () => api.insightDiagnose(variable, place));
   const scan = useLoad(key, () => api.insightScan(place));
   return (
     <>
-      <PanelSection className="space-y-3">
-        <Label>Can we trust it?</Label>
-        {diagnosis.data ? <TrustChecks d={diagnosis.data} /> : <Pending loading={diagnosis.loading} error={diagnosis.error} />}
+      <PanelSection className="space-y-2.5">
+        <div>
+          <h3 className="flex items-center gap-1.5 text-base font-semibold">
+            Quick analysis <InfoTip>Automatic checks that help you interpret this trend: is it steady, is it clear, what might be behind it.</InfoTip>
+          </h3>
+          <p className="text-xs text-muted-foreground">How to interpret this trend</p>
+        </div>
+        {diagnosis.data ? <QuickAnalysis d={diagnosis.data} /> : <Pending loading={diagnosis.loading} error={diagnosis.error} />}
       </PanelSection>
-      {diagnosis.data && (
-        <PanelSection>
-          <Significance d={diagnosis.data} />
-        </PanelSection>
-      )}
       <PanelSection className="space-y-2">
-        <Label>Everything changing here</Label>
+        <div>
+          <h3 className="flex items-center gap-1.5 text-base font-semibold">
+            What else is changing here{" "}
+            <InfoTip>Every measurement at this place, strongest change first. The bar compares the change with the usual yearly ups and downs.</InfoTip>
+          </h3>
+          <p className="text-xs text-muted-foreground">Click one to show it on the map.</p>
+        </div>
         {scan.data ? <ScanList scan={scan.data} current={variable} /> : <Pending loading={scan.loading} error={scan.error} />}
       </PanelSection>
     </>

@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
-import { contourSegments } from "@/features/globe/contours";
 import { areaAt } from "@/features/globe/areaAt";
 import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
@@ -41,6 +40,7 @@ export default function TrendMapPage() {
       flow: s.flow,
       loading: s.loading,
       region: s.region,
+      regionError: s.regionError,
       regionLoading: s.regionLoading,
       regionTarget: s.regionTarget,
       setRegion: s.setRegion,
@@ -53,9 +53,6 @@ export default function TrendMapPage() {
       pointLoading: s.pointLoading,
       pointError: s.pointError,
       load: s.load,
-      hotspot: s.hotspot,
-      divergence: s.divergence,
-      divergenceArea: s.divergenceArea,
       selectPoint: s.selectPoint,
       clearSelection: s.clearSelection,
       onlySignificant: s.onlySignificant,
@@ -87,16 +84,7 @@ export default function TrendMapPage() {
   const texture = useEarthTexture();
   const area = useMemo(() => (s.regionTarget ? targetArea(s.regionTarget) : null), [s.regionTarget]);
   const outline = useOutline(area);
-  const areaRings = useMemo(() => {
-    const d = s.divergence;
-    if (!d || s.divergenceArea == null) return null;
-    return contourSegments(d.labels.map((l) => (l === s.divergenceArea ? 1 : 0)), d.n_lat, d.n_lon, d, 0.5);
-  }, [s.divergence, s.divergenceArea]);
-  const fullRings = useMemo(() => {
-    const h = s.hotspot;
-    return h ? contourSegments(h.full, h.n_lat, h.n_lon, h, 0.5) : null;
-  }, [s.hotspot]);
-  const extras = s.showTrend && !s.hotspot;
+  const extras = s.showTrend;
   const narrow = useMedia(NARROW);
   const waking = useServerStatus((st) => st.waking);
   const notes: readonly (readonly ["busy" | "warn", string])[] = [
@@ -105,6 +93,7 @@ export default function TrendMapPage() {
     ...(s.regionLoading && !s.region && s.regionTarget ? [["busy", `loading ${targetLabel(s.regionTarget)}`] as const] : []),
     ...(s.pointError && !s.pointLoading ? [["warn", s.pointError] as const] : []),
     ...(s.stationError && !s.stationLoading ? [["warn", s.stationError] as const] : []),
+    ...(s.regionError && !s.regionLoading ? [["warn", s.regionError] as const] : []),
   ];
   const co2Open = useCo2Store((st) => st.open);
   const stacked = !!(s.region || s.selected || s.station) || co2Open || notes.length > 0;
@@ -147,11 +136,17 @@ export default function TrendMapPage() {
           s.clearSelection();
           void s.setRegion({ kind: "box", box });
         }}
-        onCountry={(lat, lon, zoomed) =>
+        multiSelect
+        onCountry={(lat, lon, zoomed, multi) =>
           void areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" }).then((boundary) => {
             if (!boundary) return;
             s.clearSelection();
-            void s.setRegion({ kind: "boundary", boundary });
+            if (!multi) return void s.setRegion({ kind: "boundary", boundary });
+            // "Several": a click adds the region to the selection, or takes it out again
+            const t = s.regionTarget;
+            const now = t?.kind === "boundaries" ? t.boundaries : t?.kind === "boundary" ? [t.boundary] : [];
+            const next = now.some((b) => b.id === boundary.id) ? now.filter((b) => b.id !== boundary.id) : [...now, boundary];
+            void s.setRegion(next.length === 0 ? null : next.length === 1 ? { kind: "boundary", boundary: next[0] } : { kind: "boundaries", boundaries: next });
           })
         }
         hoverArea={(lat, lon, zoomed) => areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" })}
@@ -180,8 +175,6 @@ export default function TrendMapPage() {
             }}
           />
         )}
-        {s.showTrend && fullRings && fullRings.length > 0 && <Outline rings={fullRings} color={0xffffff} width={1.4} />}
-        {areaRings && areaRings.length > 0 && <Outline rings={areaRings} color={0xfbbf24} width={2} />}
         {extras && edges && (
           <>
             <Outline rings={edges.first} color={0xfd8d3c} width={1.5} dashed />
@@ -192,7 +185,7 @@ export default function TrendMapPage() {
       <ControlPanel />
       {stacked && (
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex max-h-[62%] flex-col justify-end lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:max-h-none lg:w-[380px] lg:justify-start">
-          <div ref={sheet} className="scrollbar-thin pointer-events-auto flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg">
+          <div ref={sheet} data-tour="panel" className="scrollbar-thin pointer-events-auto flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg">
             <AnimatePresence initial={false}>
               {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
               {s.station && <StationPanel key="station" station={s.station} loading={s.stationLoading} />}
@@ -200,9 +193,15 @@ export default function TrendMapPage() {
               {s.region && <RegionPanel key="region" region={s.region} />}
             </AnimatePresence>
             {notes.map(([tone, text]) => (
-              <Panel key={text} className={cn("flex items-center gap-2 px-4 py-2.5 font-mono text-[11px]", tone === "warn" ? "text-warning" : "text-muted-foreground")}>
-                {tone === "busy" && <LoaderCircle className="size-3 animate-spin" />}
-                {text}
+              <Panel
+                key={text}
+                className={cn(
+                  "flex items-start gap-2.5 px-4 py-3",
+                  tone === "warn" ? "border-warning/40 text-sm leading-snug" : "items-center font-mono text-[11px] text-muted-foreground",
+                )}
+              >
+                {tone === "busy" ? <LoaderCircle className="size-3 animate-spin" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />}
+                <span>{text}</span>
               </Panel>
             ))}
           </div>

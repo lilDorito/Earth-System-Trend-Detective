@@ -7,13 +7,19 @@ import type { TrendPoint } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelSection } from "@/components/ui/panel";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Status } from "@/components/ui/status";
-import { formatLatLon, formatP, formatSigned } from "@/lib/format";
-import { describeTrend } from "@/lib/summary";
+import { formatLatLon, formatP } from "@/lib/format";
+import { describeTrend, plainName } from "@/lib/summary";
+import ChartTitle from "@/features/charts/ChartTitle";
 import { usingMockData } from "@/api";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import Insights from "./Insights";
 import TrendChart from "./TrendChart";
+import VerdictHeadline from "./VerdictHeadline";
+import { verdict } from "./verdict";
+
+const capital = (text: string) => text[0].toUpperCase() + text.slice(1);
 
 export default function PointPanel({ point, loading }: { point: TrendPoint; loading: boolean }) {
   const clearSelection = useTrendMapStore((s) => s.clearSelection);
@@ -46,7 +52,9 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
               </>
             ) : (
               <>
-                <Label>Grid cell</Label>
+                <Label className="flex items-center gap-1.5">
+                  Grid cell <InfoTip>The data come as a map of squares about 110 km across, one degree of latitude by one of longitude. Each square is a grid cell, with one value per year. Your click picks the square it falls in.</InfoTip>
+                </Label>
                 <p className="font-mono text-sm tabular-nums">{formatLatLon(point.lat, point.lon)}</p>
               </>
             )}
@@ -60,19 +68,17 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
         </div>
 
         <PanelSection className="space-y-2">
-          <p className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-medium tabular-nums">{formatSigned(point.slope_decade)}</span>
-            <span className="text-sm text-muted-foreground">{units} / decade</span>
-          </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <Status tone={point.significant_hr ? "success" : "muted"}>
-              MK p {point.p < 0.001 ? "" : "= "}
-              {formatP(point.p)}
-            </Status>
-            <Status tone={point.significant_fdr ? "success" : "muted"}>
-              {point.significant_fdr ? "significant" : "not significant"} at FDR 5%
-            </Status>
-          </div>
+          <VerdictHeadline v={verdict(meta?.key ?? "", point.slope_decade, point.significant_hr, units)}>
+            <InfoTip>
+              The answer to "Is Earth okay?" for this place. The number is how much it changed every 10 years, from the straight line through
+              2000-{point.years[point.years.length - 1]}.
+            </InfoTip>
+          </VerdictHeadline>
+          {point.significant_hr && (
+            <div title={`Mann-Kendall p ${point.p < 0.001 ? "" : "= "}${formatP(point.p)}`}>
+              <Status tone="success">statistically significant</Status>
+            </div>
+          )}
           {meta && (
             <p className="text-sm leading-relaxed">
               {describeTrend({
@@ -89,6 +95,11 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
         </PanelSection>
 
         <PanelSection>
+          {meta && (
+            <ChartTitle title={`${capital(plainName(meta.name))}, year by year`}>
+              Each dot is one year's average ({units}); the dashed line is the trend.
+            </ChartTitle>
+          )}
           <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} units={units} height={window.matchMedia("(max-width: 639px)").matches ? 160 : 200} />
         </PanelSection>
         {live && meta && <Insights variable={meta.key} place={{ lat: point.lat, lon: point.lon }} />}

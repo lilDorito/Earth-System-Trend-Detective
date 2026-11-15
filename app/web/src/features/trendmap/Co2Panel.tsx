@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Panel, PanelSection } from "@/components/ui/panel";
 import Chart, { baseOption, palette, valueAxis } from "@/features/charts/Chart";
+import ChartTitle from "@/features/charts/ChartTitle";
 import { formatSigned } from "@/lib/format";
 import { useCo2Store } from "@/store/useCo2Store";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
@@ -50,7 +51,7 @@ function Co2Chart({ co2, height }: { co2: Co2Series; height: number }) {
         valueFormatter: (v) => (typeof v === "number" ? `${v.toFixed(1)} ppm` : "–"),
       },
       legend: { top: 0, left: 0, textStyle: { color: palette.text }, itemWidth: 12, itemHeight: 2, icon: "rect" },
-      grid: { left: 0, right: 4, top: 28, bottom: 0, containLabel: true },
+      grid: { left: 0, right: 4, top: 40, bottom: 0, containLabel: true },
       xAxis: {
         type: "category",
         data: co2.months,
@@ -59,7 +60,7 @@ function Co2Chart({ co2, height }: { co2: Co2Series; height: number }) {
         axisLabel: { color: palette.text, interval: (i: number) => i % 60 === 0, formatter: (m: string) => m.slice(0, 4) },
         axisTick: { show: false },
       },
-      yAxis: { ...valueAxis, splitNumber: 4 },
+      yAxis: { ...valueAxis, splitNumber: 4, name: "ppm" },
       series: [
         { name: "Mauna Loa", type: "line", data: co2.mauna_loa, showSymbol: false, lineStyle: { width: 1, color: MAUNA_LOA, opacity: 0.8 }, itemStyle: { color: MAUNA_LOA } },
         { name: "Global mean", type: "line", data: co2.monthly, showSymbol: false, lineStyle: { width: 1.6, color: palette.series }, itemStyle: { color: palette.series } },
@@ -147,6 +148,7 @@ export default function Co2Panel() {
             </PanelSection>
 
             <PanelSection>
+              <ChartTitle title="CO₂ in the air, month by month">Parts per million, worldwide and at Mauna Loa, Hawaii.</ChartTitle>
               <Co2Chart co2={co2} height={window.matchMedia("(max-width: 639px)").matches ? 160 : 200} />
               <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
                 CO₂ mixes through the whole atmosphere within a year or two, so every place sees nearly the same curve; that is

@@ -424,9 +424,32 @@ def _fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarray, 
     return label or meta["name"], frac, [meta["south"], meta["north"], meta["west"], meta["east"]]
 
 
+MAX_REGIONS = 25
+
+
+def union_fractions(names: list[str], ds) -> tuple[str, np.ndarray, list[float]]:
+    # several regions as one area: each cell counts by the share of it inside any of them; neighbours share
+    # border cells and their shares add up to at most the whole cell
+    names = list(dict.fromkeys(n for n in names if n))
+    if not names or len(names) > MAX_REGIONS:
+        raise HTTPException(422, f"Give between 1 and {MAX_REGIONS} regions")
+    countries = {n for n in names if "-" not in n and not n.startswith("sea")}
+    inside = [n for n in names if "-" in n and not n.startswith("sea-") and n.split("-")[0] in countries]
+    if inside:
+        raise HTTPException(422, "A region inside a selected country would be counted twice: pick the country or its regions")
+    parts = [_fractions(n, ds) for n in names]
+    frac = np.clip(sum(p[1] for p in parts), 0.0, 1.0)
+    labels = [p[0] for p in parts]
+    label = ", ".join(labels) if len(labels) <= 3 else f"{', '.join(labels[:3])} and {len(labels) - 3} more"
+    boxes = np.array([p[2] for p in parts], dtype=float)
+    bbox = [float(boxes[:, 0].min()), float(boxes[:, 1].max()), float(boxes[:, 2].min()), float(boxes[:, 3].max())]
+    return label, frac, bbox
+
+
 @router.get("/region")
 def region(
     name: str | None = None,
+    names: str | None = Query(None, description="several region ids, comma-separated, averaged as one area"),
     south: float | None = Query(None, ge=-90, le=90),
     north: float | None = Query(None, ge=-90, le=90),
     west: float | None = Query(None, ge=-180, le=180),
@@ -440,7 +463,10 @@ def region(
     start, end = _range(variable, start, end)
     ds = _ds(variable)
     box = (south, north, west, east)
-    if name:
+    if names:
+        label, frac, bbox = union_fractions(names.split(","), ds)
+        name = names
+    elif name:
         label, frac, bbox = _fractions(name, ds)
     elif None not in box and south < north and west != east:
         label, frac, bbox = label or "Custom area", dataset.box_fractions(ds.lat, ds.lon, *box), list(box)
@@ -451,7 +477,7 @@ def region(
     data = ds.values[mask].astype(np.float64)
     cells = (frac > 0) & np.isfinite(data).any(axis=0)
     if not cells.any():
-        raise HTTPException(422, f"No {_what(ds)} data inside {label}")
+        raise HTTPException(422, f"No {_what(ds)} data inside {label}.{dataset.where_measured(ds.key)}")
     area = np.cos(np.deg2rad(ds.lat))[:, None] * frac
     weights = np.where(cells, frac, 0.0)
     years = ds.years[mask].astype(np.float64)
@@ -475,7 +501,6 @@ def region(
         "mean": _clean(mean, 3),
         "fitted": _clean(np.interp(years, years[valid], res["fitted"]), 3),
         "global_mean": _clean(glob, 3),
-        "stripes": _clean(mean - np.nanmean(mean), 3),
         "trend": res["trend"],
         "p": res["p"],
         "autocorr_corrected": res["corrected"],
@@ -572,7 +597,7 @@ def _nearest(ds: gridtrends.GridDataset, mask: np.ndarray, lat: float, lon: floa
     distance = np.where(mask, np.hypot(lat_grid - lat, dlon), np.inf)
     i, j = np.unravel_index(int(np.argmin(distance)), distance.shape)
     if distance[i, j] > MAX_SNAP_DEG:
-        raise HTTPException(422, f"No {_what(ds)} data near this point")
+        raise HTTPException(422, f"No {_what(ds)} data near this point.{dataset.where_measured(ds.key)}")
     return int(i), int(j)
 
 

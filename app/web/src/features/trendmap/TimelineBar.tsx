@@ -6,6 +6,7 @@ import { Pause, Play } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Panel } from "@/components/ui/panel";
 import { formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
       units: s.meta?.units ?? "",
       view: s.view,
       frameYear: s.frameYear,
-      busy: s.loading || !!s.hotspotLoading,
+      busy: s.loading,
       setFrameYear: s.setFrameYear,
       setView: s.setView,
     })),
@@ -48,6 +49,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
 
   return (
     <Panel
+      data-tour="timeline"
       style={{ "--right": `${rightInset + 16}px` } as CSSProperties}
       className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[640px] px-4 py-3 sm:left-[332px] sm:right-4 lg:right-[var(--right)]"
     >
@@ -69,7 +71,13 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
           <div className="flex items-baseline justify-between gap-3">
             <div>
               <p className="font-mono text-lg font-medium tabular-nums">{active ? s.frameYear : "Whole period"}</p>
-              <Label>{active ? `change vs ${frames.baseline[0]}-${frames.baseline[1]} mean` : "drag to see year by year"}</Label>
+              <Label className="flex items-center gap-1.5">
+                {active ? `compared with ${frames.baseline[0]}-${frames.baseline[1]}` : "drag or press play to see each year"}
+                <InfoTip>
+                  Each year is coloured by how far it was from the {frames.baseline[0]}-{frames.baseline[1]} average. The bars are the world
+                  average for each year.
+                </InfoTip>
+              </Label>
             </div>
             {mean != null && (
               <p className="font-mono text-sm tabular-nums">

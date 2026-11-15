@@ -7,7 +7,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 
 from src import dataset, gridtrends, insights, trendmaps
-from src.config import load_yaml, settings
+from src.config import settings
 
 from . import trendmap
 
@@ -59,7 +59,10 @@ def _info(key: str) -> dict:
     return {"key": key, "name": meta["name"], "units": meta["units"], "group": meta["group"]}
 
 
-def _place(lat, lon, region, south, north, west, east) -> tuple[str, object]:
+def _place(lat, lon, region, south, north, west, east, regions=None) -> tuple[str, object]:
+    if regions:
+        grid = SimpleNamespace(lat=dataset.LAT, lon=dataset.LON, values=np.empty((0, len(dataset.LAT), len(dataset.LON))))
+        return "box", trendmap.union_fractions(regions.split(","), grid)[1]
     if region and region.startswith("sea-"):
         grid = SimpleNamespace(lat=dataset.LAT, lon=dataset.LON)
         return "box", trendmap._sea_fractions(region, grid)[1]
@@ -88,6 +91,7 @@ PlaceQuery = dict(
     lat=Query(None, ge=-90, le=90),
     lon=Query(None, ge=-180, le=180),
     region=Query(None, description="Natural Earth id from /api/boundaries"),
+    regions=Query(None, description="several region ids, comma-separated, as one area"),
     south=Query(None, ge=-90, le=90),
     north=Query(None, ge=-90, le=90),
     west=Query(None, ge=-180, le=180),
@@ -100,6 +104,7 @@ def scan(
     lat: float | None = PlaceQuery["lat"],
     lon: float | None = PlaceQuery["lon"],
     region: str | None = PlaceQuery["region"],
+    regions: str | None = PlaceQuery["regions"],
     south: float | None = PlaceQuery["south"],
     north: float | None = PlaceQuery["north"],
     west: float | None = PlaceQuery["west"],
@@ -107,7 +112,7 @@ def scan(
 ):
     # every variable at a place, ranked by effect size (change per decade over the year-to-year scatter), so a
     # tiny but significant trend does not top the list; significance is FDR-corrected across the variables
-    kind, place = _place(lat, lon, region, south, north, west, east)
+    kind, place = _place(lat, lon, region, south, north, west, east, regions)
     cells = _cells()
     rows = []
     for key in cells["keys"].tolist():
@@ -215,12 +220,13 @@ def diagnose(
     lat: float | None = PlaceQuery["lat"],
     lon: float | None = PlaceQuery["lon"],
     region: str | None = PlaceQuery["region"],
+    regions: str | None = PlaceQuery["regions"],
     south: float | None = PlaceQuery["south"],
     north: float | None = PlaceQuery["north"],
     west: float | None = PlaceQuery["west"],
     east: float | None = PlaceQuery["east"],
 ):
-    kind, place = _place(lat, lon, region, south, north, west, east)
+    kind, place = _place(lat, lon, region, south, north, west, east, regions)
     try:
         info = _info(variable)
     except KeyError as e:
@@ -237,77 +243,3 @@ def diagnose(
         out["enso"] |= {"trend": out["enso"]["trend"] * 10, "trend_without_enso": out["enso"]["trend_without_enso"] * 10}
     out["agreement"] = _agreement(variable, kind, place, {"slope_decade": out["slope_decade"], "p": out["p"]})
     return _clean(info | {"kind": kind, **where, **out})
-
-
-@lru_cache(maxsize=1)
-def _scenarios() -> dict:
-    return load_yaml("scenarios.yaml").get("scenarios", {})
-
-
-@router.get("/scenarios")
-def scenarios():
-    known = set(dataset.catalog()) if settings.data_mode == "live" else set()
-    return [
-        {"id": sid, "name": s["name"], "story": s["story"],
-         "variables": [_info(k) | {"sign": v} for k, v in s["variables"].items() if k in known]}
-        for sid, s in _scenarios().items()
-        if all(k in known for k in s["variables"])
-    ]
-
-
-@router.get("/hotspots")
-def hotspots(scenario: str):
-    # per cell: the share of the scenario's variables with a significant trend in the expected direction;
-    # null where any variable has no data. Cells where a jump explains a variable better than a trend are flagged
-    spec = _scenarios().get(scenario)
-    if spec is None:
-        raise HTTPException(404, f"Unknown scenario. Choose one of: {', '.join(_scenarios())}")
-    cells = _cells()
-    keys = list(spec["variables"])
-    missing = [k for k in keys if f"{k}:slope" not in cells]
-    if missing:
-        raise HTTPException(404, f"Not in the dataset: {', '.join(missing)}")
-    covered = np.ones((len(dataset.LAT), len(dataset.LON)), dtype=bool)
-    hits = np.zeros(covered.shape, dtype=np.int8)
-    jumps = np.zeros(covered.shape, dtype=bool)
-    for key, sign in spec["variables"].items():
-        slope = cells[f"{key}:slope"]
-        covered &= np.isfinite(slope)
-        match = cells[f"{key}:sig"].astype(bool) & (np.sign(slope) == sign)
-        hits += match
-        jumps |= match & cells[f"{key}:step"].astype(bool)
-    score = np.where(covered, hits / len(keys), np.nan)
-    full = covered & (hits == len(keys))
-    area = np.broadcast_to(np.cos(np.deg2rad(dataset.LAT))[:, None] * trendmaps.CELL_KM2, covered.shape)
-    domains = {dataset.variable(k)["domain"] for k in keys}
-    return _clean({
-        "id": scenario,
-        "name": spec["name"],
-        "n_vars": len(keys),
-        "n_lat": len(dataset.LAT), "n_lon": len(dataset.LON),
-        "lat0": float(dataset.LAT[0]), "lon0": float(dataset.LON[0]), "dlat": 1.0, "dlon": 1.0,
-        "domain": "land" if domains == {"land"} or "land" in domains else ("ocean" if domains == {"ocean"} else "global"),
-        "score": np.round(score, 3).ravel(),
-        "full": full.astype(np.uint8).ravel(),
-        "full_area_km2": float(area[full].sum()),
-        "full_with_jump_km2": float(area[full & jumps].sum()),
-    })
-
-
-@router.get("/divergence")
-def divergence(variable: str):
-    trendmap._range(variable, None, None)
-    pre = trendmap._pre(variable)
-    if pre is None or "cluster_labels" not in pre:
-        raise HTTPException(503, "This dataset revision has no trend areas; rebuild with hf_dataset.py trends")
-    areas = [
-        {"id": k + 1, "sign": int(pre["cluster_sign"][k]), "area_km2": float(pre["cluster_area"][k]),
-         "slope_decade": float(pre["cluster_slope"][k]), "lat": float(pre["cluster_lat"][k]), "lon": float(pre["cluster_lon"][k])}
-        for k in range(len(pre["cluster_sign"]))
-    ]
-    return _clean(_info(variable) | {
-        "n_lat": len(dataset.LAT), "n_lon": len(dataset.LON),
-        "lat0": float(dataset.LAT[0]), "lon0": float(dataset.LON[0]), "dlat": 1.0, "dlon": 1.0,
-        "areas": areas,
-        "labels": pre["cluster_labels"].ravel(),
-    })

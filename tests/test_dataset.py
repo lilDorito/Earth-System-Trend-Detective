@@ -1,4 +1,4 @@
-# dataset access, the hf_grid source and live trend map endpoints, on a tiny local copy of the dataset
+# dataset access and live trend map endpoints, on a tiny local copy of the dataset
 
 from datetime import date
 
@@ -11,9 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.api import trendmap
 from app.api.main import app
-from src import dataset, pipeline
+from src import dataset
 from src.config import settings
-from src.contracts import BBox, Point, Region, Regions
 
 YEARS = range(2000, 2012)
 CELLS = [(50.5, 30.5), (50.5, 31.5), (46.5, 30.5)]  # land around Kyiv and Odesa; everything else has no data
@@ -78,7 +77,7 @@ def local(tmp_path, monkeypatch):
 
 
 def clear_caches():
-    for cached in (dataset.catalog, dataset.annual, dataset._grid_file, dataset.regions, dataset._region_weights,
+    for cached in (dataset.catalog, dataset.annual, dataset.regions, dataset._region_weights,
                    trendmap._ds, trendmap._grid, trendmap._frames, trendmap._pre):
         getattr(cached, "cache_clear", lambda: None)()  # a test may have patched one with a plain function
     trendmap._responses.clear()
@@ -92,81 +91,12 @@ def test_annual_keeps_complete_years_and_enough_months(local):
     assert np.isnan(annual.values[:, 0, 0]).all()
 
 
-def test_point_snaps_to_nearest_cell_with_data(local):
-    df, lat, lon = dataset.point_series("fake_t2m", 50.2, 32.0)
-    assert (lat, lon) == (50.5, 31.5) and len(df) == 138 and str(df["time"].dt.tz) == "UTC"
-    with pytest.raises(dataset.DatasetError):
-        dataset.point_series("fake_t2m", -30.0, 100.0)
-
-
-def test_area_mean_and_source(local, monkeypatch):
-    area = dataset.area_series("fake_t2m", 45, 52, 29, 33)
-    assert len(area.df) == 138 and area.cells == 3 and 0 < area.coverage < 0.2
-    from src import catalog
-
-    variable = catalog.get_variable("air_temperature").model_copy(update={"variable_id": "fake_t2m"})
-    monkeypatch.setitem(catalog.variables(), "air_temperature", variable)
-    series, _, result = pipeline.analyze("air_temperature", Point(lat=50.4, lon=30.6), date(2000, 1, 1), date(2011, 6, 1))
-    assert series.meta.source == "hf_grid" and series.meta.grid_lat == 50.5
-    assert result.slope_per_decade == pytest.approx(0.5, abs=0.05)
-    box, _, _ = pipeline.analyze("air_temperature", BBox(west=29, south=45, east=33, north=52), date(2000, 1, 1), date(2011, 6, 1))
-    assert box.meta.grid_lat is None and box.meta.cells == 3
-    region, _, _ = pipeline.analyze("air_temperature", Region(id="tst"), date(2000, 1, 1), date(2011, 6, 1))
-    assert region.meta.region_name == "Testland" and region.meta.cells == 2
-    assert region.meta.coverage == pytest.approx(0.75, abs=0.01)
-    with pytest.raises(Exception, match="Unknown region"):
-        pipeline.analyze("air_temperature", Region(id="nope"), date(2000, 1, 1), date(2011, 6, 1))
-
-
-def test_several_regions_make_one_area(local, monkeypatch):
-    from src import catalog
-
-    variable = catalog.get_variable("air_temperature").model_copy(update={"variable_id": "fake_t2m"})
-    monkeypatch.setitem(catalog.variables(), "air_temperature", variable)
-    start, end = date(2000, 1, 1), date(2011, 6, 1)
-    cells = dataset.regions_cells(["tst-a", "tst-b", "tst-a"])
-    assert len(cells) == 3 and cells.set_index("lon")["frac"].to_dict() == pytest.approx({30.5: 1.0, 31.5: 0.5, 32.5: 0.5})
-    both, _, result = pipeline.analyze("air_temperature", Regions(ids=["tst-a", "tst-b"]), start, end)
-    assert both.meta.region_name == "Alpha, Beta" and both.meta.cells == 2
-    assert both.meta.coverage == pytest.approx(0.75, abs=0.01)
-    assert result.slope_per_decade == pytest.approx(0.5, abs=0.05)
-    alone, _, _ = pipeline.analyze("air_temperature", Regions(ids=["tst-a"]), start, end)
-    single, _, _ = pipeline.analyze("air_temperature", Region(id="tst-a"), start, end)
-    assert alone.df["value"].to_list() == pytest.approx(single.df["value"].to_list())
-    with_other, _, _ = pipeline.analyze("air_temperature", Regions(ids=["tst-a", "oth"]), start, end)
-    assert with_other.meta.cells == 3
-    with pytest.raises(ValueError, match="inside a selected country"):
-        pipeline.analyze("air_temperature", Regions(ids=["tst", "tst-a"]), start, end)
-    with pytest.raises(Exception, match="Unknown region"):
-        pipeline.analyze("air_temperature", Regions(ids=["tst-a", "nope"]), start, end)
-    assert dataset.regions_label(["tst-a", "tst-b", "tst", "oth"], shown=2) == "Alpha, Beta and 2 more"
-
-
 def test_box_fractions():
     frac = dataset.box_fractions(dataset.LAT, dataset.LON, 50.25, 51.0, 30.0, 31.5)
     assert frac[140, 210] == pytest.approx(0.75) and frac[140, 211] == pytest.approx(0.375)
     assert frac.sum() == pytest.approx(0.75 * 1.5)
     across = dataset.box_fractions(dataset.LAT, dataset.LON, 0, 1, 179.5, -179.5)
     assert across.sum() == pytest.approx(1.0) and across[90, 359] == pytest.approx(0.5) and across[90, 0] == pytest.approx(0.5)
-    assert BBox(west=170, south=0, east=-170, north=1).center == (0.5, -180.0)
-    with pytest.raises(ValueError):
-        BBox(west=0, south=5, east=1, north=5)
-
-
-def test_area_weights_by_share_latitude_and_valid_frac(monkeypatch):
-    # two cells: one fully inside with value 0, one half inside, half valid, at 60N, with value 1
-    rows = {
-        10.5: pd.DataFrame(dict(date=[date(2000, 1, 1)], lon=[0.5], value=[0.0], valid_frac=[1.0])),
-        60.5: pd.DataFrame(dict(date=[date(2000, 1, 1)], lon=[0.5], value=[1.0], valid_frac=[0.5])),
-    }
-    monkeypatch.setattr(dataset, "_band", lambda key, lat, own_handle=False: rows[lat])
-    monkeypatch.setattr(dataset, "_grid_file", lambda key: None)
-    monkeypatch.setattr(dataset, "variable", lambda key: {"name": "x", "factor": 1})
-    cells = pd.DataFrame(dict(lat=[10.5, 60.5], lon=[0.5, 0.5], frac=[1.0, 0.5]))
-    area = dataset._area("x", cells, "here")
-    w0, w1 = np.cos(np.deg2rad(10.5)), 0.5 * np.cos(np.deg2rad(60.5)) * 0.5
-    assert area.df["value"].iloc[0] == pytest.approx(w1 / (w0 + w1))
-    assert area.coverage == 1.0 and area.cells == 2
 
 
 def test_live_trendmap_endpoints(local):
@@ -194,6 +124,12 @@ def test_live_trendmap_endpoints(local):
     region = client.get("/api/trendmap/region", params={"variable": "fake_t2m", "name": "tst"}).json()
     assert region["label"] == "Testland" and region["n_cells"] == 2 and region["slope_decade"] == pytest.approx(0.5, abs=0.01)
     assert client.get("/api/trendmap/region", params={"variable": "fake_t2m", "name": "nope"}).status_code == 404
+    # two neighbours as one area: the cell they share counts once in full, and the label names both
+    both = client.get("/api/trendmap/region", params={"variable": "fake_t2m", "names": "tst-a,tst-b"}).json()
+    assert both["label"] == "Alpha, Beta" and both["n_cells"] == 2 and both["slope_decade"] == pytest.approx(0.5, abs=0.01)
+    assert client.get("/api/trendmap/region", params={"variable": "fake_t2m", "names": "tst,tst-a"}).status_code == 422
+    scan = client.get("/api/insights/scan", params={"regions": "tst-a,oth"})
+    assert scan.status_code in (200, 503)
     found = client.get("/api/boundaries", params={"q": "testl"}).json()
     assert [r["id"] for r in found] == ["tst"]
 

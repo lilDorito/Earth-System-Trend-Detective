@@ -54,26 +54,6 @@ export function loadBoundaries(): Promise<Boundary[]> {
   return indexCached;
 }
 
-function score(b: Indexed, q: string): number {
-  if (b.key === q || b.altKey === q) return 0;
-  if (b.key.startsWith(q) || b.altKey.startsWith(q)) return 1;
-  if (b.key.includes(` ${q}`) || b.key.includes(`-${q}`) || b.altKey.includes(` ${q}`)) return 2;
-  if (b.key.includes(q)) return 3;
-  if (b.kind === "admin1" && b.countryKey.startsWith(q)) return 4;
-  return -1;
-}
-
-export function searchBoundaries(all: Boundary[], query: string, limit = 8): Boundary[] {
-  const q = fold(query.trim());
-  if (!q) return [];
-  return (all as Indexed[])
-    .map((b) => [score(b, q), b] as const)
-    .filter(([s]) => s >= 0)
-    .sort(([sa, a], [sb, b]) => sa - sb || (a.kind === b.kind ? b.areaKm2 - a.areaKm2 : a.kind === "country" ? -1 : 1))
-    .slice(0, limit)
-    .map(([, b]) => b);
-}
-
 // the data is a 1 degree grid, so regions far smaller than a cell (Moldova's or Latvia's districts) have no
 // trend of their own: they are not drawn or picked, and a click falls back to the region or country above
 const CELL_KM2 = 111.195 ** 2; // one square degree at the equator

@@ -13,6 +13,8 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { Panel, PanelSection } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
+import ChartTitle from "@/features/charts/ChartTitle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { Switch } from "@/components/ui/switch";
@@ -22,8 +24,7 @@ import { useTrendMapStore, type Display } from "@/store/useTrendMapStore";
 import { useStationStore } from "@/store/useStationStore";
 import { STATION_ELEMENTS, elementFor } from "@/features/stations/elements";
 import { DESCRIPTIONS } from "./descriptions";
-import { Fingerprints, OppositeTrends } from "./Discover";
-import { FINGERPRINT, bandGradient, styleFor, valueRange } from "./styles";
+import { bandGradient, styleFor, valueRange } from "./styles";
 import TrendChart from "./TrendChart";
 
 const isPhone = () => window.matchMedia("(max-width: 639px)").matches;
@@ -48,46 +49,41 @@ const CO2_CONTEXT: Record<string, string> = {
 };
 const CO2_ITEM = "__co2";
 
+// one panel at a time: the CO2 chart replaces whatever point, station or area is open
+function openCo2Chart() {
+  const map = useTrendMapStore.getState();
+  map.clearSelection();
+  void map.setRegion(null);
+  useCo2Store.getState().setOpen(true);
+}
+
 function Co2Context({ note }: { note: string }) {
-  const { co2, load, setOpen } = useCo2Store(useShallow((s) => ({ co2: s.series, load: s.load, setOpen: s.setOpen })));
+  const { co2, load } = useCo2Store(useShallow((s) => ({ co2: s.series, load: s.load })));
   useEffect(load, [load]);
   if (!co2) return null;
   const first = co2.ppm.find((v) => v != null);
   const last = [...co2.ppm].reverse().find((v) => v != null);
   return (
     <PanelSection className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <button type="button" onClick={() => setOpen(true)} className="cursor-pointer underline-offset-2 hover:underline">
-          <Label>Atmospheric CO₂</Label>
-        </button>
-        <span className="font-mono text-[13px] tabular-nums">
-          {formatSigned(co2.slope_decade, 1)} <span className="text-muted-foreground">ppm/dec</span>
-        </span>
-      </div>
-      <TrendChart years={co2.years} values={co2.ppm} units="ppm" height={80} compact />
-      <p className="text-[11px] leading-snug text-muted-foreground">
-        {first?.toFixed(0)} to {last?.toFixed(0)} ppm, NOAA GML. {note}
-      </p>
+      <ChartTitle
+        title="CO₂ in the air"
+        tip="Carbon dioxide, the main gas behind global warming, in parts per million (ppm): how many CO₂ molecules there are in every million molecules of air. Measured by NOAA."
+      >
+        Worldwide yearly average: from {first?.toFixed(0)} to {last?.toFixed(0)} ppm, {formatSigned(co2.slope_decade, 1)} per decade.
+      </ChartTitle>
+      <TrendChart years={co2.years} values={co2.ppm} units="ppm" height={110} compact />
+      <p className="text-[11px] leading-snug text-muted-foreground">{note}</p>
+      <button type="button" onClick={openCo2Chart} className="cursor-pointer text-xs text-primary underline-offset-2 hover:underline">
+        Open the full CO₂ chart
+      </button>
     </PanelSection>
   );
 }
 
 function Legend() {
   const s = useTrendMapStore(
-    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, flow: s.flow, hotspot: s.hotspot })),
+    useShallow((s) => ({ meta: s.meta, display: s.display, view: s.view, frames: s.frames, valueFrames: s.valueFrames, flow: s.flow })),
   );
-  if (s.hotspot) {
-    return (
-      <PanelSection className="space-y-2">
-        <Label>{s.hotspot.name}: variables matching</Label>
-        <div className="h-1.5" style={{ background: bandGradient(FINGERPRINT) }} />
-        <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
-          <span>none</span>
-          <span>all {s.hotspot.n_vars}</span>
-        </div>
-      </PanelSection>
-    );
-  }
   if (!s.meta) return null;
   const style = styleFor(s.meta.key);
   const units = s.meta.units;
@@ -112,8 +108,11 @@ function Legend() {
   const stops = values && !style.signed ? style.values : style.change;
 
   return (
-    <PanelSection className="space-y-2">
-      <Label>{label}</Label>
+    <PanelSection className="space-y-2" data-tour="legend">
+      <Label className="flex items-center gap-1.5">
+        {label}
+        <InfoTip>{values ? "The colour of each place is its yearly average." : "The colour of each place is how fast it changed. Grey middle: almost no change."}</InfoTip>
+      </Label>
       <div className="h-1.5" style={{ background: bandGradient(stops) }} />
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
         {ticks(lo, hi).map((t, i) => (
@@ -133,17 +132,14 @@ function Legend() {
       {style.isobars && (
         <p className="text-[11px] leading-snug text-muted-foreground">
           {values
-            ? "Lines of equal pressure. Surface pressure follows the terrain, so lows here mark mountains, not storms."
-            : "Lines of equal change; H and L mark where pressure rose or fell most."}
+            ? "Lines of equal pressure. Lows here are mountains, not storms."
+            : "H and L: where pressure rose or fell most."}
         </p>
       )}
       {style.flow && s.flow?.field === style.flow && (
         <p className="text-[11px] leading-snug text-muted-foreground">
           Streaks drift with the mean {style.flow === "wind" ? "10 m wind" : "surface current"}, {s.flow.start}-{s.flow.end}.
         </p>
-      )}
-      {!values && s.view === "trend" && (
-        <p className="text-[11px] leading-snug text-muted-foreground">Colour fades where the change is near zero.</p>
       )}
     </PanelSection>
   );
@@ -162,8 +158,8 @@ function Stations() {
   );
   const withTrend = list ? list.slope.filter((v) => v !== null).length : 0;
   let note: string;
-  if (!element) note = "No station measurement matches this variable.";
-  else if (!show) note = `NCEI monthly ${STATION_ELEMENTS[element].name.toLowerCase()}, compared with the grid.`;
+  if (!element) note = "Not measured by weather stations.";
+  else if (!show) note = `Ground stations measuring ${STATION_ELEMENTS[element].name.toLowerCase()}.`;
   else if (loading) note = "Loading stations";
   else if (error) note = error;
   else if (list) note = `${list.ids.length} stations, ${withTrend} with ${list.min_years}+ years of data.`;
@@ -171,24 +167,29 @@ function Stations() {
 
   return (
     <PanelSection className="space-y-2">
-      <Toggle label="Weather stations" checked={show && !!element} disabled={!element} onChange={setShow} />
+      <Toggle
+        label="Weather stations"
+        tip="Real thermometers and rain gauges on the ground (NOAA). Click a station to compare it with the satellite data."
+        checked={show && !!element}
+        disabled={!element}
+        onChange={setShow}
+      />
       <p className={cn("text-[11px] leading-snug", error && show ? "text-warning" : "text-muted-foreground")}>{note}</p>
       {show && list && (
         <div className="space-y-1 font-mono text-[10px] text-muted-foreground">
           <p className="flex items-center gap-2">
-            <span className="size-2 rounded-full border-[1.5px] border-white bg-[#e05a3c]" /> trend, significant at FDR 5%
+            <span className="size-2 rounded-full border-[1.5px] border-white bg-[#e05a3c]" /> white ring: real change
           </p>
           {!onlySignificant && (
             <>
               <p className="flex items-center gap-2">
-                <span className="size-2 rounded-full border border-black bg-[#e05a3c]" /> trend, not significant
+                <span className="size-2 rounded-full border border-black bg-[#e05a3c]" /> no ring: could be chance
               </p>
               <p className="flex items-center gap-2">
-                <span className="size-1.5 rounded-full bg-[#787e88]" /> under {list.min_years} years, no trend
+                <span className="size-1.5 rounded-full bg-[#787e88]" /> grey: too few years
               </p>
             </>
           )}
-          <p>Same colour scale as the change map. Click a station to compare it with its grid cell.</p>
         </div>
       )}
     </PanelSection>
@@ -201,17 +202,22 @@ const GROUPS: [TrendVariable["group"], string][] = [
   ["ocean", "Ocean"],
 ];
 
-function Toggle({ label, checked, disabled, onChange }: {
+function Toggle({ label, tip, checked, disabled, onChange, tour }: {
   label: string;
+  tour?: string;
+  tip?: string;
   checked: boolean;
   disabled?: boolean;
   onChange: (on: boolean) => void;
 }) {
   return (
-    <label className={cn("flex cursor-pointer items-center justify-between gap-3 text-sm", disabled && "cursor-default opacity-40")}>
-      {label}
-      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
-    </label>
+    <div data-tour={tour} className={cn("flex items-center justify-between gap-3 text-sm", disabled && "opacity-40")}>
+      <span className="flex items-center gap-1.5">
+        {label}
+        {tip && <InfoTip>{tip}</InfoTip>}
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
+    </div>
   );
 }
 
@@ -234,20 +240,14 @@ export default function ControlPanel() {
       setOpacity: s.setOpacity,
       onlySignificant: s.onlySignificant,
       view: s.view,
-      regionError: s.regionError,
       selection: `${s.selected?.lat},${s.selected?.lon}|${s.station?.id ?? ""}|${s.region?.label ?? ""}`,
       hasSelection: s.selected !== null || s.station !== null || s.region !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
-      clearSelection: s.clearSelection,
     })),
   );
   const [open, setOpen] = useState(() => !isPhone());
   const co2Open = useCo2Store((st) => st.open);
-  const openCo2 = () => {
-    s.clearSelection();
-    useCo2Store.getState().setOpen(true);
-  };
   const waking = useServerStatus((st) => st.waking);
   const change = s.display === "trend";
   const units = s.meta?.units ?? "";
@@ -305,10 +305,10 @@ export default function ControlPanel() {
           )}
 
           {s.variables.length > 0 && (
-            <PanelSection>
+            <PanelSection data-tour="variable">
               <Dropdown
                 value={s.variable}
-                onChange={(key) => (key === CO2_ITEM ? openCo2() : void s.setVariable(key))}
+                onChange={(key) => (key === CO2_ITEM ? openCo2Chart() : void s.setVariable(key))}
                 items={GROUPS.flatMap(([group, label]) => [
                   ...s.variables.filter((v) => v.group === group).map((v) => ({ value: v.key, label: v.name, group: label })),
                   ...(group === "atmosphere" ? [{ value: CO2_ITEM, label: "Atmospheric CO₂ (chart)", group: label }] : []),
@@ -320,28 +320,30 @@ export default function ControlPanel() {
           )}
 
           <PanelSection className="space-y-2.5">
-            <Toggle label="Trend layer" checked={s.showTrend} onChange={s.setShowTrend} />
-            <Segmented
-              size="sm"
-              className={cn("flex w-full", !s.showTrend && "pointer-events-none opacity-40")}
-              value={s.display}
-              options={DISPLAYS}
-              onChange={(display) => void s.setDisplay(display)}
-            />
+            <Toggle label="Colour layer" tip="Colours the globe by this measurement. Turn it off to see the plain satellite image." checked={s.showTrend} onChange={s.setShowTrend} />
+            <div className={cn("flex items-center gap-2", !s.showTrend && "pointer-events-none opacity-40")}>
+              <Segmented size="sm" className="flex flex-1" value={s.display} options={DISPLAYS} onChange={(display) => void s.setDisplay(display)} />
+              <InfoTip>Change: how fast it changed since 2000. Values: the actual yearly average.</InfoTip>
+            </div>
             <Toggle
-              label="Dots on significant (FDR 5%)"
+              tour="dots"
+              label="Dots on real change"
+              tip="A dot means the change is too steady to be chance, even after checking every place on Earth at once (FDR 5%)."
               checked={s.stipple}
               disabled={!s.showTrend || !change || s.view !== "trend"}
               onChange={s.setStipple}
             />
             <Toggle
-              label="Significant only"
+              label="Hide uncertain places"
+              tip="Greys out every place where the change could be chance."
               checked={s.onlySignificant}
               disabled={!s.showTrend || !change || s.view !== "trend"}
               onChange={s.setOnlySignificant}
             />
             <label className={cn("flex items-center justify-between gap-3 text-sm", !s.showTrend && "opacity-40")}>
-              Opacity
+              <span className="flex items-center gap-1.5">
+                Strength <InfoTip>How strongly the colours cover the satellite image.</InfoTip>
+              </span>
               <input
                 type="range"
                 min={0.2}
@@ -360,14 +362,7 @@ export default function ControlPanel() {
           <Stations />
           {CO2_CONTEXT[s.variable] && <Co2Context note={CO2_CONTEXT[s.variable]} />}
 
-          <Fingerprints />
-          <OppositeTrends />
 
-          {s.regionError && (
-            <PanelSection>
-              <p className="text-xs text-warning">{s.regionError}</p>
-            </PanelSection>
-          )}
 
           <PanelSection>
             {s.loading || !s.globalMean ? (
@@ -377,18 +372,18 @@ export default function ControlPanel() {
               </div>
             ) : (
               <>
-                <div className="flex items-baseline justify-between gap-2">
-                  <Label>Global mean</Label>
-                  <span className="font-mono text-[13px] tabular-nums">
-                    {formatSigned(s.globalMean.slope_decade)} <span className="text-muted-foreground">{units}/dec</span>
-                  </span>
-                </div>
+                <ChartTitle
+                  title="The whole planet"
+                  tip="The average over every place on Earth with data, one value per year. The dashed line is its trend. Compare it with the place you click."
+                >
+                  World average per year ({units}). Dashed line: the trend, {formatSigned(s.globalMean.slope_decade)} per decade.
+                </ChartTitle>
                 <TrendChart
                   years={s.globalMean.years}
                   values={s.globalMean.values}
                   fitted={s.globalMean.fitted}
                   units={units}
-                  height={100}
+                  height={120}
                   compact
                 />
               </>

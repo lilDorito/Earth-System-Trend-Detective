@@ -14,6 +14,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { formatAxis } from "@/lib/format";
+import { isPhoneTheme } from "@/lib/theme";
 
 echarts.use([
   LineChart,
@@ -28,15 +29,32 @@ echarts.use([
 
 const MONO = '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
 
-export const palette = {
-  text: "#8d939c",
-  axis: "#2c3036",
-  split: "rgba(255,255,255,0.05)",
-  series: "#8fb0cf",
-  rolling: "#d9b45a",
-  trend: "#ef7f5f",
-  event: "#b99cf0",
-};
+// charts draw on a canvas, so they take the theme here: the dark desktop look, or marshmallow on phones
+const marshmallow = isPhoneTheme();
+
+export const palette = marshmallow
+  ? {
+      text: "#8a5a74",
+      axis: "#e9c3d3",
+      split: "rgba(150, 60, 105, 0.09)",
+      series: "#e2689f",
+      rolling: "#d9a400",
+      trend: "#7a2e5c",
+      event: "#8f6fd8",
+    }
+  : {
+      text: "#8d939c",
+      axis: "#2c3036",
+      split: "rgba(255,255,255,0.05)",
+      series: "#8fb0cf",
+      rolling: "#d9b45a",
+      trend: "#ef7f5f",
+      event: "#b99cf0",
+    };
+
+const tooltipLook = marshmallow
+  ? { background: "#fffaf0", border: "rgba(150, 60, 105, 0.22)", text: "#4a2340", pointer: "rgba(150, 60, 105, 0.3)" }
+  : { background: "#16181c", border: "rgba(255,255,255,0.12)", text: "#e6e8eb", pointer: "rgba(255,255,255,0.2)" };
 
 export const baseOption: EChartsOption = {
   backgroundColor: "transparent",
@@ -44,12 +62,12 @@ export const baseOption: EChartsOption = {
   textStyle: { color: palette.text, fontFamily: MONO, fontSize: 10 },
   tooltip: {
     trigger: "axis",
-    backgroundColor: "#16181c",
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 3,
+    backgroundColor: tooltipLook.background,
+    borderColor: tooltipLook.border,
+    borderRadius: marshmallow ? 10 : 3,
     padding: [6, 8],
-    textStyle: { color: "#e6e8eb", fontSize: 11, fontFamily: MONO },
-    axisPointer: { lineStyle: { color: "rgba(255,255,255,0.2)" } },
+    textStyle: { color: tooltipLook.text, fontSize: 11, fontFamily: MONO },
+    axisPointer: { lineStyle: { color: tooltipLook.pointer } },
   },
 };
 

@@ -8,6 +8,7 @@ import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
 import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
+import { cssVar, usePhoneTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
 import type { Ring } from "./boundaries";
@@ -351,6 +352,8 @@ export default function GlobeCanvas({
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const hint = (touch && touchHint) || mouseHint;
   const hasSelection = !!marker || !!outline?.length;
+  const phoneTheme = usePhoneTheme();
+  const sky = useMemo(() => cssVar("--globe-sky") || "#0a0b0d", [phoneTheme]);
   // imagery, borders and labels appear together instead of popping in one by one
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
@@ -373,8 +376,9 @@ export default function GlobeCanvas({
       >
         <AdaptiveResolution />
         <IdleSpin enabled={autoRotate} />
-        <color attach="background" args={["#0a0b0d"]} />
-        <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
+        {/* the theme's sky: deep space on desktop, marshmallow pink on phones, where stars would only look like dust */}
+        <color key={sky} attach="background" args={[sky]} />
+        {!phoneTheme && <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />}
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}

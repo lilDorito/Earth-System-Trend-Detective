@@ -12,6 +12,7 @@ from src.config import settings
 from src.sources.base import SourceError
 
 from .schemas import AnalyzeRequest, AnalyzeResponse, SeriesPoint
+from .stations import router as stations_router
 from .trendmap import router as trendmap_router
 
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")]
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(trendmap_router)
+app.include_router(stations_router)
 
 
 @app.get("/api/health")

@@ -8,6 +8,7 @@ import type {
   BBox,
   Boundary,
   GlobalMean,
+  StationCompare,
   TrendFrames,
   TrendGrid,
   TrendMeta,
@@ -17,6 +18,8 @@ import type {
   TrendWind,
 } from "@/api/types";
 import { styleFor } from "@/features/trendmap/styles";
+import { elementFor } from "@/features/stations/elements";
+import { useStationStore } from "@/store/useStationStore";
 import { boundaryLabel, fitDistance } from "@/features/globe/boundaries";
 import type { Area } from "@/features/globe/useOutline";
 
@@ -71,6 +74,12 @@ type TrendMapState = {
   pointLoading: boolean;
   pointError: string | null;
 
+  showStations: boolean;
+  stationId: string | null;
+  station: StationCompare | null;
+  stationLoading: boolean;
+  stationError: string | null;
+
   load: () => Promise<void>;
   setVariable: (key: string) => Promise<void>;
   setShowTrend: (on: boolean) => void;
@@ -83,6 +92,9 @@ type TrendMapState = {
   setRegion: (target: RegionTarget | null) => Promise<void>;
   selectPoint: (lat: number, lon: number, name?: string) => Promise<void>;
   clearSelection: () => void;
+  setShowStations: (on: boolean) => void;
+  selectStation: (id: string) => Promise<void>;
+  clearStation: () => void;
 };
 
 const boxOf = ([south, north, west, east]: readonly number[]) => ({ south, north, west, east });
@@ -94,6 +106,7 @@ const boxCenter = (b: { south: number; north: number; west: number; east: number
 let variableRequestId = 0;
 let pointRequestId = 0;
 let regionRequestId = 0;
+let stationRequestId = 0;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const useTrendMapStore = create<TrendMapState>((set, get) => ({
@@ -125,6 +138,12 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   selected: null,
   pointLoading: false,
   pointError: null,
+
+  showStations: false,
+  stationId: null,
+  station: null,
+  stationLoading: false,
+  stationError: null,
 
   async load() {
     if (get().loading || get().grid) return;
@@ -162,7 +181,13 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
       if (id === variableRequestId) set({ loading: false, error: message(e) });
       return;
     }
-    const { regionTarget, picked, display, valueFrames: shown } = get();
+    const { regionTarget, picked, display, valueFrames: shown, stationId, station, showStations } = get();
+    const element = elementFor(variable);
+    if (showStations && element) void useStationStore.getState().load(element);
+    if (stationId) {
+      if (element && element === station?.element) void get().selectStation(stationId);
+      else get().clearStation();
+    }
     // the values view was switched on while this variable was loading
     if (display === "values" && !shown) void get().setDisplay("values");
     if (regionTarget) void get().setRegion(regionTarget);
@@ -221,6 +246,7 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
 
   async selectPoint(lat, lon, name) {
     const id = ++pointRequestId;
+    get().clearStation();
     set({ picked: { lat, lon, name }, pointLoading: true, pointError: null });
     try {
       const point = await api.trendPoint(get().variable, lat, lon);
@@ -233,5 +259,32 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
   clearSelection() {
     pointRequestId++;
     set({ picked: null, selected: null, pointLoading: false, pointError: null });
+    get().clearStation();
+  },
+
+  setShowStations(showStations) {
+    set({ showStations });
+    const element = elementFor(get().variable);
+    if (showStations && element) void useStationStore.getState().load(element);
+    if (!showStations) get().clearStation();
+  },
+
+  async selectStation(stationId) {
+    const element = elementFor(get().variable);
+    if (!element) return;
+    const id = ++stationRequestId;
+    pointRequestId++;
+    set({ stationId, stationLoading: true, stationError: null, picked: null, selected: null, pointLoading: false, pointError: null });
+    try {
+      const station = await api.stationCompare(stationId, get().variable, element);
+      if (id === stationRequestId) set({ station, stationLoading: false });
+    } catch (e) {
+      if (id === stationRequestId) set({ station: null, stationLoading: false, stationError: message(e) });
+    }
+  },
+
+  clearStation() {
+    stationRequestId++;
+    set({ stationId: null, station: null, stationLoading: false, stationError: null });
   },
 }));

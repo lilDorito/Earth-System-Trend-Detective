@@ -16,6 +16,12 @@ import WindLayer from "@/features/globe/WindLayer";
 import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
 import RegionPanel from "@/features/trendmap/RegionPanel";
+import StationLayer from "@/features/globe/StationLayer";
+import { elementFor } from "@/features/stations/elements";
+import { stationLabel, trendStyle } from "@/features/stations/style";
+import StationPanel from "@/features/trendmap/StationPanel";
+import { styleFor } from "@/features/trendmap/styles";
+import { useStationStore } from "@/store/useStationStore";
 import TimelineBar from "@/features/trendmap/TimelineBar";
 import { useTrendLayer } from "@/features/trendmap/useTrendLayer";
 import { targetArea, useTrendMapStore } from "@/store/useTrendMapStore";
@@ -42,8 +48,24 @@ export default function TrendMapPage() {
       load: s.load,
       selectPoint: s.selectPoint,
       clearSelection: s.clearSelection,
+      onlySignificant: s.onlySignificant,
+      showStations: s.showStations,
+      stationId: s.stationId,
+      station: s.station,
+      stationLoading: s.stationLoading,
+      stationError: s.stationError,
+      selectStation: s.selectStation,
+      clearStation: s.clearStation,
     })),
   );
+  const element = elementFor(s.variable);
+  const stations = useStationStore((st) => (element ? st.lists[element] : undefined));
+  const stationStyle = useMemo(
+    () => (stations && s.meta ? trendStyle(stations, styleFor(s.variable).change, s.meta.trend_scale, s.onlySignificant) : null),
+    [stations, s.meta, s.variable, s.onlySignificant],
+  );
+  const stationIndex = stations && s.stationId ? stations.ids.indexOf(s.stationId) : -1;
+  const showStations = s.showStations && !!stations && !!stationStyle;
 
   useEffect(() => {
     void s.load();
@@ -63,7 +85,7 @@ export default function TrendMapPage() {
         marker={s.picked}
         outline={outline}
         focus={s.focus}
-        autoRotate={!s.picked && !s.regionTarget}
+        autoRotate={!s.picked && !s.regionTarget && !s.stationId}
         hint="Click to inspect a grid cell, shift-drag for a box, right-click to clear"
         touchHint="Tap a cell to inspect it, pinch to zoom"
         detail={!s.showTrend}
@@ -73,7 +95,7 @@ export default function TrendMapPage() {
           void s.selectPoint(lat, lon, city);
         }}
         // clears the picked cell first, then the region
-        onClear={() => (s.picked ? s.clearSelection() : void s.setRegion(null))}
+        onClear={() => (s.picked || s.stationId ? s.clearSelection() : void s.setRegion(null))}
         onBox={(box) => {
           s.clearSelection();
           void s.setRegion({ kind: "box", box });
@@ -87,7 +109,7 @@ export default function TrendMapPage() {
             void s.setRegion({ kind: "boundary", boundary });
           })
         }
-        rightInset={s.region || s.selected ? 396 : 0}
+        rightInset={s.region || s.selected || s.station ? 396 : 0}
         loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
         {layer && texture && <FieldLayer earth={texture} domain={s.meta?.domain} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
@@ -95,6 +117,21 @@ export default function TrendMapPage() {
           <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={s.showTrend} />
         )}
         <ExtremaLabels points={highsLows} visible={s.showTrend} />
+        {stations && stationStyle && (
+          <StationLayer
+            lat={stations.lat}
+            lon={stations.lon}
+            colors={stationStyle.colors}
+            kinds={stationStyle.kinds}
+            selected={stationIndex >= 0 ? stationIndex : null}
+            visible={showStations}
+            label={(k) => stationLabel(stations, k)}
+            onPick={(k) => {
+              void s.setRegion(null);
+              void s.selectStation(stations.ids[k]);
+            }}
+          />
+        )}
         {s.showTrend && edges && (
           <>
             <Outline rings={edges.first} color={0xfd8d3c} width={1.5} dashed />
@@ -104,15 +141,24 @@ export default function TrendMapPage() {
       </GlobeCanvas>
       <ControlPanel />
       <AnimatePresence>
-        {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null} />}
+        {s.region && <RegionPanel key="region" region={s.region} shifted={s.selected !== null || s.station !== null} />}
         {s.selected && <PointPanel key="point" point={s.selected} loading={s.pointLoading} />}
+        {s.station && <StationPanel key="station" station={s.station} loading={s.stationLoading} />}
       </AnimatePresence>
       {/* phones show one bottom sheet at a time: the timeline gives way to a point or region panel */}
-      {s.showTrend && !((s.selected || s.region) && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
+      {s.showTrend && !((s.selected || s.station || s.region) && window.matchMedia("(max-width: 639px)").matches) && <TimelineBar />}
       {s.pointLoading && !s.selected && (
         <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" /> loading cell
         </div>
+      )}
+      {s.stationLoading && !s.station && (
+        <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+          <LoaderCircle className="size-3 animate-spin" /> loading station
+        </div>
+      )}
+      {s.stationError && !s.stationLoading && (
+        <div className="absolute bottom-3 right-4 font-mono text-[11px] text-warning">{s.stationError}</div>
       )}
       {s.pointError && !s.pointLoading && (
         <div className="absolute bottom-3 right-4 font-mono text-[11px] text-warning">{s.pointError}</div>

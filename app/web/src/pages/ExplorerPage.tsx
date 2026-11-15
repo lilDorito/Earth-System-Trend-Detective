@@ -6,9 +6,13 @@ import Results from "@/features/explorer/Results";
 import Wizard from "@/features/explorer/Wizard";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
 import { countryAt } from "@/features/globe/countryAt";
+import StationLayer from "@/features/globe/StationLayer";
+import StationToggle from "@/features/stations/StationToggle";
+import { plainStyle, stationLabel } from "@/features/stations/style";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
 import { useOutline, type Area } from "@/features/globe/useOutline";
 import { useAppStore } from "@/store/useAppStore";
+import { useStationStore } from "@/store/useStationStore";
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -31,6 +35,14 @@ export default function ExplorerPage() {
     return null;
   }, [location, boundary]);
   const outline = useOutline(area);
+  const stationsOn = useStationStore((s) => s.explorerOn);
+  const stations = useStationStore((s) => s.lists[s.explorerElement]);
+  const stationStyle = useMemo(() => (stations ? plainStyle(stations) : null), [stations]);
+  const stationIndex = useMemo(() => {
+    if (!stations || location?.type !== "point") return null;
+    const k = stations.ids.findIndex((_, i) => stations.lat[i] === location.lat && stations.lon[i] === location.lon);
+    return k >= 0 ? k : null;
+  }, [stations, location]);
 
   return (
     <div className="scrollbar-thin h-full overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
@@ -47,7 +59,21 @@ export default function ExplorerPage() {
           onClear={clearLocation}
           onBox={setBox}
           onCountry={(lat, lon) => void countryAt(lat, lon).then((b) => b && pickBoundary(b))}
-        />
+        >
+          {stations && stationStyle && (
+            <StationLayer
+              lat={stations.lat}
+              lon={stations.lon}
+              colors={stationStyle.colors}
+              kinds={stationStyle.kinds}
+              selected={stationIndex}
+              visible={stationsOn}
+              label={(k) => stationLabel(stations, k)}
+              onPick={(k) => setLocation({ type: "point", lat: stations.lat[k], lon: stations.lon[k] }, stations.names[k])}
+            />
+          )}
+        </GlobeCanvas>
+        <StationToggle />
       </section>
 
       <aside className="scrollbar-thin border-t bg-card lg:overflow-y-auto lg:border-l lg:border-t-0">

@@ -3,6 +3,7 @@
 import type { Api } from "../client";
 import { analyze } from "./analysis";
 import { demos, regions, regionTypes, variables } from "./catalog";
+import { stationCompare, stations } from "./stations";
 import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion, trendVariables, trendWind } from "./trendmap";
 
 function respond<T>(produce: () => T, latency = 250): Promise<T> {
@@ -31,5 +32,7 @@ export const mockApi: Api = {
   trendWind: () => respond(trendWind),
   trendRegion: (_, region) => respond(() => trendRegion(region)),
   trendPoint: (_, lat, lon) => respond(() => trendPoint(lat, lon)),
+  stations: (element) => respond(() => stations(element), 300),
+  stationCompare: (id, variable, element) => respond(() => stationCompare(id, variable, element)),
   analyze: (body) => respond(() => analyze(body), 500),
 };

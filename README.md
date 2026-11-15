@@ -61,10 +61,10 @@ src/
   gridtrends.py       global grid: Mann-Kendall + Sen per cell, FDR, demo field (feeds /map)
   pipeline.py         fetch -> process -> analyze
 app/
-  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{variables,meta,grid,frames,global-mean,region,point}
+  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{variables,meta,grid,frames,global-mean,region,point}, /api/stations{,/elements,/compare}
   web/                React + TS + Vite, R3F globe, ECharts, Tailwind, shadcn/ui, Zustand
     src/api/          typed client + in-browser mock with the same interface
-    src/features/     globe (shared canvas), explorer (wizard + results), trendmap, charts
+    src/features/     globe (shared canvas), explorer (wizard + results), trendmap, stations, charts
 scripts/              dev, run_smoke, prepare_grid, prepare_gistemp
   ingest/             source downloads (NASA grids, ocean grids, NCEI stations) and the Hugging Face dataset build
 data/                 cache/ + raw/ (ignored), demos/ (committed, offline demo data)

@@ -16,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { digitsFor, formatSigned } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore, type Display } from "@/store/useTrendMapStore";
+import { useStationStore } from "@/store/useStationStore";
+import { STATION_ELEMENTS, elementFor } from "@/features/stations/elements";
 import { bandGradient, styleFor, valueRange } from "./styles";
 import TrendChart from "./TrendChart";
 
@@ -91,6 +93,54 @@ function Legend() {
     </PanelSection>
   );
 }
+// station toggle with what the points show; points are fetched only once switched on
+function Stations() {
+  const { variable, show, setShow, onlySignificant } = useTrendMapStore(
+    useShallow((s) => ({ variable: s.variable, show: s.showStations, setShow: s.setShowStations, onlySignificant: s.onlySignificant })),
+  );
+  const element = elementFor(variable);
+  const { list, loading, error } = useStationStore(
+    useShallow((s) => ({
+      list: element ? s.lists[element] : undefined,
+      loading: element ? !!s.loading[element] : false,
+      error: element ? s.errors[element] : null,
+    })),
+  );
+  const withTrend = list ? list.slope.filter((v) => v !== null).length : 0;
+  let note: string;
+  if (!element) note = "No station measurement matches this variable.";
+  else if (!show) note = `NCEI monthly ${STATION_ELEMENTS[element].name.toLowerCase()}, compared with the grid.`;
+  else if (loading) note = "Loading stations";
+  else if (error) note = error;
+  else if (list) note = `${list.ids.length} stations, ${withTrend} with ${list.min_years}+ years of data.`;
+  else note = "";
+
+  return (
+    <PanelSection className="space-y-2">
+      <Toggle label="Weather stations" checked={show && !!element} disabled={!element} onChange={setShow} />
+      <p className={cn("text-[11px] leading-snug", error && show ? "text-warning" : "text-muted-foreground")}>{note}</p>
+      {show && list && (
+        <div className="space-y-1 font-mono text-[10px] text-muted-foreground">
+          <p className="flex items-center gap-2">
+            <span className="size-2 rounded-full border-[1.5px] border-white bg-[#e05a3c]" /> trend, significant at FDR 5%
+          </p>
+          {!onlySignificant && (
+            <>
+              <p className="flex items-center gap-2">
+                <span className="size-2 rounded-full border border-black bg-[#e05a3c]" /> trend, not significant
+              </p>
+              <p className="flex items-center gap-2">
+                <span className="size-1.5 rounded-full bg-[#787e88]" /> under {list.min_years} years, no trend
+              </p>
+            </>
+          )}
+          <p>Same colour scale as the change map. Click a station to compare it with its grid cell.</p>
+        </div>
+      )}
+    </PanelSection>
+  );
+}
+
 const GROUPS: [TrendVariable["group"], string][] = [
   ["atmosphere", "Atmosphere"],
   ["land", "Land"],
@@ -131,7 +181,7 @@ export default function ControlPanel() {
       onlySignificant: s.onlySignificant,
       view: s.view,
       regionError: s.regionError,
-      hasSelection: s.selected !== null,
+      hasSelection: s.selected !== null || s.station !== null,
       setShowTrend: s.setShowTrend,
       setOnlySignificant: s.setOnlySignificant,
     })),
@@ -242,6 +292,8 @@ export default function ControlPanel() {
           </PanelSection>
 
           {s.showTrend && <Legend />}
+
+          <Stations />
 
           {s.regionError && (
             <PanelSection>

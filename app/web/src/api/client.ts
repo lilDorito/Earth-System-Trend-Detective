@@ -7,6 +7,9 @@ import type {
   GlobalMean,
   Region,
   RegionType,
+  StationCompare,
+  StationElementKey,
+  StationList,
   TrendFrames,
   TrendGrid,
   TrendMeta,
@@ -70,6 +73,9 @@ export const httpApi = {
   },
   trendPoint: (variable: string, lat: number, lon: number) =>
     request<TrendPoint>(`/api/trendmap/point?${query({ variable, lat: lat.toFixed(3), lon: lon.toFixed(3) })}`),
+  stations: (element: StationElementKey) => request<StationList>(`/api/stations?${query({ element })}`),
+  stationCompare: (id: string, variable: string | null, element: StationElementKey) =>
+    request<StationCompare>(`/api/stations/compare?${query(variable ? { id, element, variable } : { id, element })}`),
   analyze: (body: AnalyzeRequest) =>
     request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
 };

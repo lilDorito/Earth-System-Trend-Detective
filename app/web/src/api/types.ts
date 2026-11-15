@@ -263,3 +263,59 @@ export type TrendRegion = {
   ratio: number | null;
   share_warming: number;
 };
+
+export type StationElementKey = "TAVG" | "PRCP" | "AWND";
+
+export type StationList = {
+  element: StationElementKey;
+  name: string;
+  units: string;
+  years: number[];
+  min_years: number;
+  scale: number;
+  ids: string[];
+  names: string[];
+  lat: number[];
+  lon: number[];
+  slope: (number | null)[];
+  p: (number | null)[];
+  significant: boolean[];
+  n_years: number[];
+};
+
+export type StationTrend = {
+  slope_decade: number;
+  p: number;
+  significant: boolean;
+  significant_fdr?: boolean;
+  n_years: number;
+  fitted: (number | null)[];
+};
+
+export type StationCompare = {
+  id: string;
+  name: string;
+  country: string;
+  lat: number;
+  lon: number;
+  elevation: number | null;
+  element: StationElementKey;
+  element_name: string;
+  units: string;
+  years: number[];
+  min_years: number;
+  station: (number | null)[];
+  station_trend: StationTrend | null;
+  grid: {
+    variable: string;
+    name: string;
+    lat: number;
+    lon: number;
+    distance_km: number;
+    values: (number | null)[];
+    trend: StationTrend | null;
+    r: number | null;
+    common_years: number;
+    difference_decade?: number;
+  } | null;
+};

@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, SquareDashed, Waves, X } from "lucide-react";
 import type { BBox } from "@/api/types";
-import { AdditiveBlending, BackSide, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, BufferGeometry, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
@@ -79,16 +79,34 @@ function Atmosphere() {
   );
 }
 
-// easter egg: one star in the sky is the team picture, a few pixels across. It sits at a fixed spot in space, below
-// and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as the globe turns
-const SECRET_STAR_AT: [number, number, number] = [16.2, -50.6, -78.8];
+// easter egg: a small asteroid with the team picture as its rock, a dozen pixels across. It floats at a fixed spot in
+// space, below and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as
+// the globe turns
+const SECRET_ASTEROID_AT: [number, number, number] = [16.2, -50.6, -78.8];
+const SECRET_ASTEROID_RADIUS = 0.75; // world units, some 95 away
 
-// tapping it opens the full picture. The star is a few pixels wide, so a short tap anywhere within a fingertip of
-// where it is on screen counts, unless the Earth is in front of it. Worked out in screen space on each tap: the
-// 3D hit test does not pick up a transparent sprite reliably
-const SECRET_STAR_HIT_PX = 24;
+// tapping it opens the full picture. It is small, so a short tap anywhere within a fingertip of where it is on screen
+// counts, unless the Earth is in front of it. Worked out in screen space on each tap, not by the 3D hit test
+const SECRET_ASTEROID_HIT_PX = 24;
 
-function SecretStar({ onOpen }: { onOpen: () => void }) {
+// a lumpy rock: a sphere whose surface points move in or out by a fixed pattern of their direction (so points the
+// sphere repeats along its seams move together and the surface stays closed), with flat facets
+function asteroidGeometry(): BufferGeometry {
+  const geometry = new IcosahedronGeometry(1, 2);
+  const pos = geometry.attributes.position;
+  const p = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i).normalize();
+    const bumps = Math.sin(p.x * 5.1 + 1.3) * Math.sin(p.y * 4.3 + 0.7) * Math.sin(p.z * 3.7 + 2.1);
+    const dents = Math.sin(p.x * 11.3 + p.y * 7.9 + p.z * 9.1);
+    p.multiplyScalar(1 + 0.22 * bumps + 0.07 * dents);
+    pos.setXYZ(i, p.x, p.y * 0.78, p.z * 0.88); // a little flattened, as small asteroids are
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function SecretAsteroid({ onOpen }: { onOpen: () => void }) {
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
@@ -97,7 +115,7 @@ function SecretStar({ onOpen }: { onOpen: () => void }) {
 
   useEffect(() => {
     const el = gl.domElement;
-    const star = new Vector3(...SECRET_STAR_AT);
+    const star = new Vector3(...SECRET_ASTEROID_AT);
     const onScreen = new Vector3();
     const sightLine = new Ray();
     let down: { x: number; y: number } | null = null;
@@ -112,7 +130,7 @@ function SecretStar({ onOpen }: { onOpen: () => void }) {
       const rect = el.getBoundingClientRect();
       const x = rect.left + ((onScreen.x + 1) / 2) * rect.width;
       const y = rect.top + ((1 - onScreen.y) / 2) * rect.height;
-      if (Math.hypot(e.clientX - x, e.clientY - y) > SECRET_STAR_HIT_PX) return;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > SECRET_ASTEROID_HIT_PX) return;
       sightLine.set(camera.position, star.clone().sub(camera.position).normalize());
       if (sightLine.intersectsSphere(UNIT_SPHERE)) return; // hidden behind the Earth
       openRef.current();
@@ -124,10 +142,19 @@ function SecretStar({ onOpen }: { onOpen: () => void }) {
       el.removeEventListener("click", release);
     };
   }, [gl, camera]);
+  const rock = useRef<Mesh>(null);
+  const geometry = useMemo(asteroidGeometry, []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  // tumbles only while frames are drawn anyway (the globe spinning or being dragged), so it never keeps the GPU busy
+  useFrame((_, delta) => {
+    if (!rock.current) return;
+    rock.current.rotation.x += delta * 0.21;
+    rock.current.rotation.y += delta * 0.34;
+  });
   const [texture, setTexture] = useState<Texture | null>(null);
   useEffect(() => {
     let active = true;
-    new TextureLoader().load("/textures/star-goyz.png", (loaded) => {
+    new TextureLoader().load("/textures/goyz-rock.jpg", (loaded) => {
       if (!active) return loaded.dispose();
       loaded.colorSpace = SRGBColorSpace;
       setTexture(loaded);
@@ -139,9 +166,14 @@ function SecretStar({ onOpen }: { onOpen: () => void }) {
   }, [invalidate]);
   if (!texture) return null;
   return (
-    <sprite position={SECRET_STAR_AT} scale={0.9} raycast={() => null}>
-      <spriteMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
-    </sprite>
+    <group position={SECRET_ASTEROID_AT}>
+      {/* only the asteroid is lit (everything else in the scene draws its own colours), from the Sun's side */}
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[60, 40, 80]} intensity={2.2} />
+      <mesh ref={rock} geometry={geometry} scale={SECRET_ASTEROID_RADIUS} rotation={[0.4, 1.1, 0.2]} raycast={() => null}>
+        <meshStandardMaterial map={texture} flatShading roughness={1} metalness={0} />
+      </mesh>
+    </group>
   );
 }
 
@@ -445,7 +477,7 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <SecretStar onOpen={() => setSecretOpen(true)} />
+        <SecretAsteroid onOpen={() => setSecretOpen(true)} />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}

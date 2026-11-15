@@ -4,10 +4,15 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
+import { Crosshair, SquareDashed } from "lucide-react";
+import type { BBox } from "@/api/types";
 import { AdditiveBlending, BackSide, Quaternion, Sphere, Vector3, type EventDispatcher, type Intersection, type Mesh, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import MapOverlay, { type PickHandler } from "./MapOverlay";
+import MapOverlay, { type CitySnap, type PickHandler } from "./MapOverlay";
+import type { Ring } from "./boundaries";
+import BoxDraw from "./BoxDraw";
+import Outline from "./Outline";
 import DetailTiles from "./DetailTiles";
 import { latLonToVector, vectorToLatLon } from "./geo";
 
@@ -24,10 +29,12 @@ function raycastSphere(this: Mesh, raycaster: Raycaster, intersects: Intersectio
 type GlobeCanvasProps = {
   texture: Texture | null;
   marker?: LatLon | null;
-  focus?: (LatLon & { id: number }) | null;
+  focus?: (LatLon & { id: number; distance?: number }) | null;
   autoRotate?: boolean;
   onPick?: PickHandler;
   onClear?: () => void;
+  onBox?: (box: BBox) => void;
+  outline?: Ring[] | null;
   hint?: string;
   detail?: boolean;
   loading?: string | null;
@@ -93,12 +100,17 @@ function FitCamera() {
   return null;
 }
 
-type EarthProps = Pick<GlobeCanvasProps, "texture" | "onPick" | "onClear"> & { onHover: (point: LatLon | null) => void };
+type EarthProps = Pick<GlobeCanvasProps, "texture" | "onPick" | "onClear"> & {
+  onHover: (point: LatLon | null) => void;
+  snap: CitySnap;
+};
 
-function Earth({ texture, onPick, onClear, onHover }: EarthProps) {
+function Earth({ texture, onPick, onClear, onHover, snap }: EarthProps) {
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     if (!onPick || e.delta > DRAG_THRESHOLD_PX) return;
     e.stopPropagation();
+    const city = snap.current?.(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    if (city) return onPick(city.lat, city.lon, city.name);
     const { lat, lon } = vectorToLatLon(e.point);
     onPick(lat, lon);
   };
@@ -208,7 +220,9 @@ function AdaptiveResolution() {
 
 function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
   const camera = useThree((s) => s.camera);
-  const flight = useRef<{ from: Vector3; rotation: Quaternion; distance: number; t: number; started: boolean } | null>(null);
+  const flight = useRef<{ from: Vector3; rotation: Quaternion; distance: number; to: number; t: number; started: boolean } | null>(
+    null,
+  );
 
   const invalidate = useThree((s) => s.invalidate);
 
@@ -220,6 +234,7 @@ function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
       from,
       rotation: new Quaternion().setFromUnitVectors(from, to),
       distance: camera.position.length(),
+      to: target.distance ?? camera.position.length(),
       t: 0,
       started: false,
     };
@@ -234,7 +249,7 @@ function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
     f.started = true;
     const ease = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (-2 * f.t + 2) ** 3 / 2;
     const step = new Quaternion().slerp(f.rotation, ease);
-    camera.position.copy(f.from).applyQuaternion(step).multiplyScalar(f.distance);
+    camera.position.copy(f.from).applyQuaternion(step).multiplyScalar(f.distance + (f.to - f.distance) * ease);
     camera.lookAt(0, 0, 0);
     if (f.t === 1) flight.current = null;
     else state.invalidate();
@@ -252,7 +267,7 @@ function Loading({ label }: { label: string }) {
       transition={{ duration: 0.2 }}
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <div className="w-36 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+      <div className="w-48 rounded-md border bg-card/90 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground shadow-lg shadow-black/40 backdrop-blur">
         {label}
         <div className="mt-2 h-px overflow-hidden bg-border">
           <div className="h-full w-2/5 animate-scan bg-primary" />
@@ -269,6 +284,8 @@ export default function GlobeCanvas({
   autoRotate = false,
   onPick,
   onClear,
+  onBox,
+  outline = null,
   hint = "",
   detail = true,
   loading = null,
@@ -276,7 +293,9 @@ export default function GlobeCanvas({
 }: GlobeCanvasProps) {
   const readout = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
+  const snap = useRef(null) as CitySnap;
   const [mapReady, setMapReady] = useState(false);
+  const [boxTool, setBoxTool] = useState(false);
   // imagery, borders and labels appear together instead of popping in one by one
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
@@ -298,9 +317,16 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         <color attach="background" args={["#0a0b0d"]} />
         <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />
-        <Earth texture={texture} onPick={onPick} onClear={onClear} onHover={onHover} />
+        <Earth texture={texture} onPick={onPick} onClear={onClear} onHover={onHover} snap={snap} />
         {detail && texture && <DetailTiles />}
         {children}
+        {outline && outline.length > 0 && <Outline rings={outline} />}
+        {onBox && (
+          <BoxDraw
+            active={boxTool}
+            onBox={onBox}
+          />
+        )}
         <Atmosphere />
         <FitCamera />
         <FlyTo target={focus} />
@@ -313,7 +339,7 @@ export default function GlobeCanvas({
           minDistance={1.12}
           maxDistance={7}
         />
-        <MapOverlay labels={labels} onPick={onPick} onClear={onClear} marker={marker} onReady={() => setMapReady(true)} />
+        <MapOverlay labels={labels} onPick={onPick} onClear={onClear} marker={marker} snap={snap} onReady={() => setMapReady(true)} />
       </Canvas>
       <div
         ref={labels}
@@ -323,6 +349,35 @@ export default function GlobeCanvas({
         )}
       />
       <AnimatePresence>{status && <Loading key={status} label={status} />}</AnimatePresence>
+      {onBox && ready && (
+        // what a click or drag on the globe does; shift-drag draws a box in either mode
+        <div
+          role="radiogroup"
+          aria-label="Selection mode"
+          className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-0.5 rounded-md border bg-card/85 p-0.5 shadow-lg shadow-black/30 backdrop-blur sm:top-4"
+        >
+          {([
+            [false, Crosshair, "Point"],
+            [true, SquareDashed, "Box"],
+          ] as const).map(([box, Icon, label]) => (
+            <button
+              key={label}
+              type="button"
+              role="radio"
+              aria-checked={boxTool === box}
+              onClick={() => setBoxTool(box)}
+              title={box ? "Drag on the globe to draw a box (shift-drag works in point mode too)" : "Click to pick a point"}
+              className={cn(
+                "flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                boxTool === box && "bg-accent text-foreground",
+              )}
+            >
+              <Icon className="size-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         ref={readout}
         className="pointer-events-none absolute bottom-3 left-3 font-mono text-[11px] tabular-nums text-muted-foreground sm:bottom-4 sm:left-4"

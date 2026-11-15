@@ -97,6 +97,8 @@ type Label = {
   position: Vector3;
   normal: Vector3;
   dot: number;
+  x?: number;
+  y?: number;
   shown?: boolean;
   opacity?: string;
   transform?: string;
@@ -132,15 +134,21 @@ function createLabel(text: string, className: string, dotClass?: string) {
 
 export type PickHandler = (lat: number, lon: number, name?: string) => void;
 
+// nearest city dot on screen to a click, so clicks just beside a dot still pick the city
+export type CitySnap = { current: ((x: number, y: number) => City | null) | null };
+
+const SNAP_PX = 8;
+
 type LatLon = { lat: number; lon: number };
 
-function Labels({ countries, cities, container, onPick, onClear, marker }: {
+function Labels({ countries, cities, container, onPick, onClear, marker, snap }: {
   countries: Countries;
   cities: City[];
   container: RefObject<HTMLDivElement | null>;
   onPick: RefObject<PickHandler | undefined>;
   onClear: RefObject<(() => void) | undefined>;
   marker?: LatLon | null;
+  snap?: CitySnap;
 }) {
   const canvas = useThree((s) => s.gl.domElement);
   const countryLabels = useRef<Label[]>([]);
@@ -163,6 +171,21 @@ function Labels({ countries, cities, container, onPick, onClear, marker }: {
   }, []);
   const markerAt = useMemo(() => (marker ? latLonToVector(marker.lat, marker.lon, 1) : null), [marker]);
   const pickedCity = useRef<(Label & { city: City }) | null>(null);
+
+  useEffect(() => {
+    if (!snap) return;
+    snap.current = (x, y) => {
+      let best: City | null = null;
+      let bestDistance = SNAP_PX;
+      for (const label of cityLabels.current) {
+        if (!label.shown || label.x === undefined || label.y === undefined) continue;
+        const distance = Math.hypot(label.x - x, label.y - y);
+        if (distance < bestDistance) [best, bestDistance] = [label.city, distance];
+      }
+      return best;
+    };
+    return () => void (snap.current = null);
+  }, [snap]);
 
   useEffect(() => {
     const root = container.current;
@@ -253,6 +276,8 @@ function Labels({ countries, cities, container, onPick, onClear, marker }: {
       const box = [left - 3, y - 8, left + label.width + 3, y + 8];
       if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return hide(label);
       placed.push(box);
+      label.x = x;
+      label.y = y;
       const alpha = Math.round(opacity * Math.min(1, (facing - MIN_FACING) / 0.25) * 20) / 20;
       show(label, String(alpha), `translate3d(${left.toFixed(1)}px, ${(y - 8).toFixed(1)}px, 0)`);
     };
@@ -310,9 +335,10 @@ type MapOverlayProps = {
   onClear?: () => void;
   marker?: LatLon | null;
   onReady?: () => void;
+  snap?: CitySnap;
 };
 
-export default function MapOverlay({ labels, onPick, onClear, marker, onReady }: MapOverlayProps) {
+export default function MapOverlay({ labels, onPick, onClear, marker, onReady, snap }: MapOverlayProps) {
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
   const clearRef = useRef(onClear);
@@ -341,7 +367,7 @@ export default function MapOverlay({ labels, onPick, onClear, marker, onReady }:
     <>
       <Borders positions={countries.coasts} width={1} opacity={0.5} />
       <Borders positions={countries.borders} width={1.3} opacity={0.8} />
-      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} onClear={clearRef} marker={marker} />}
+      {cities && <Labels countries={countries} cities={cities} container={labels} onPick={pickRef} onClear={clearRef} marker={marker} snap={snap} />}
     </>
   );
 }

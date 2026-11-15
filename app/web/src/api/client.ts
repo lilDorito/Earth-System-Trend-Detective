@@ -12,6 +12,9 @@ import type {
   TrendMeta,
   TrendPoint,
   TrendRegion,
+  TrendRegionQuery,
+  TrendVariable,
+  TrendWind,
   VariableInfo,
 } from "./types";
 
@@ -25,6 +28,8 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -44,13 +49,21 @@ export const httpApi = {
   regions: () => request<Record<string, Region>>("/api/regions"),
   regionTypes: () => request<Record<string, RegionType>>("/api/region-types"),
   demos: () => request<Demo[]>("/api/demos"),
-  trendMeta: () => request<TrendMeta>("/api/trendmap/meta"),
-  trendGrid: () => request<TrendGrid>("/api/trendmap/grid"),
-  trendGlobalMean: () => request<GlobalMean>("/api/trendmap/global-mean"),
-  trendFrames: () => request<TrendFrames>("/api/trendmap/frames"),
-  trendRegion: (name: string) => request<TrendRegion>(`/api/trendmap/region?name=${encodeURIComponent(name)}`),
-  trendPoint: (lat: number, lon: number) =>
-    request<TrendPoint>(`/api/trendmap/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`),
+  trendVariables: () => request<TrendVariable[]>("/api/trendmap/variables"),
+  trendMeta: (variable: string) => request<TrendMeta>(`/api/trendmap/meta?${query({ variable })}`),
+  trendGrid: (variable: string) => request<TrendGrid>(`/api/trendmap/grid?${query({ variable })}`),
+  trendGlobalMean: (variable: string) => request<GlobalMean>(`/api/trendmap/global-mean?${query({ variable })}`),
+  trendFrames: (variable: string, kind: "anomaly" | "values" = "anomaly") =>
+    request<TrendFrames>(`/api/trendmap/frames?${query({ variable, kind })}`),
+  trendWind: () => request<TrendWind>("/api/trendmap/wind"),
+  trendRegion: (variable: string, region: TrendRegionQuery) => {
+    const where: Record<string, string> = region.name
+      ? { name: region.name }
+      : Object.fromEntries(Object.entries(region.box ?? {}).map(([k, v]) => [k, String(v)]));
+    return request<TrendRegion>(`/api/trendmap/region?${query({ variable, ...where })}`);
+  },
+  trendPoint: (variable: string, lat: number, lon: number) =>
+    request<TrendPoint>(`/api/trendmap/point?${query({ variable, lat: lat.toFixed(3), lon: lon.toFixed(3) })}`),
   analyze: (body: AnalyzeRequest) =>
     request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify(body) }),
 };

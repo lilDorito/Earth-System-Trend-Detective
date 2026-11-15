@@ -18,7 +18,6 @@ class Settings:
     data_mode: str = os.environ.get("DATA_MODE", "mock")
     earthdata_token: str | None = os.environ.get("EARTHDATA_TOKEN") or None
     cache_dir: Path = ROOT / os.environ.get("CACHE_DIR", "data/cache")
-    demos_dir: Path = ROOT / "data" / "demos"
     request_timeout_s: float = float(os.environ.get("REQUEST_TIMEOUT_S", "60"))
 
 

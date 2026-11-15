@@ -1,14 +1,12 @@
 # Data
-data/cache/*
-!data/cache/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
-data/grid/*
-!data/grid/.gitkeep
+data/cache/
+data/raw/
+data/grid/
 merra2/
 data/ncei/
 data/ocean/
 data/nasa_grid/
+data/hf/
 *.nc
 *.nc4
 

@@ -1,4 +1,7 @@
 # API + web in one command; ports from API_PORT (5055, since 8000 is often blocked on Windows) and WEB_PORT
+#
+#   python scripts/dev.py          # web on its in-browser mock, API as set in .env
+#   python scripts/dev.py --live   # web talks to the API, API reads real data (DATA_MODE=live)
 
 import os
 import shutil
@@ -34,10 +37,14 @@ def main() -> int:
         if subprocess.run([npm, "install"], cwd=WEB).returncode != 0:
             return 1
 
+    live = "--live" in sys.argv[1:]
+    api_env = {**os.environ, "DATA_MODE": "live"} if live else None
     api = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.api.main:app", "--port", API_PORT, "--reload"], cwd=ROOT
+        [sys.executable, "-m", "uvicorn", "app.api.main:app", "--port", API_PORT, "--reload"], cwd=ROOT, env=api_env
     )
     web_env = {**os.environ, "VITE_API_TARGET": f"http://localhost:{API_PORT}"}
+    if live:
+        web_env["VITE_DATA_SOURCE"] = "api"
     web = subprocess.Popen([npm, "run", "dev", "--", "--port", WEB_PORT], cwd=WEB, env=web_env)
 
     print(f"\n  web: http://localhost:{WEB_PORT}   api docs: http://localhost:{API_PORT}/docs   (Ctrl+C to stop)\n")

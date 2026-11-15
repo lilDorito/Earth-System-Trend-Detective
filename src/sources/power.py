@@ -67,8 +67,9 @@ def parse_monthly(payload: dict, parameter: str) -> pd.DataFrame:
 
 def _center(location: Location) -> tuple[float, float]:
     if isinstance(location, BBox):  # a box is served by its center point
-        return (location.south + location.north) / 2, (location.west + location.east) / 2
-    assert isinstance(location, Point)
+        return location.center
+    if not isinstance(location, Point):
+        raise SourceError("NASA POWER takes a point or a box, not a region")
     return location.lat, location.lon
 
 

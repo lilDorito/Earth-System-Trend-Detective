@@ -67,7 +67,7 @@ def test_api_period_validation():
 
 # Hamed-Rao gives NaN p on some smooth series, the API must fall back
 def test_every_demo_cell_has_finite_stats():
-    ds = trendmap._ds()
+    ds = trendmap._ds(trendmap.DEFAULT)
     for i in range(0, len(ds.lat), 4):
         for j in range(0, len(ds.lon), 9):
             r = client.get("/api/trendmap/point", params={"lat": float(ds.lat[i]), "lon": float(ds.lon[j])})

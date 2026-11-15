@@ -2,15 +2,17 @@
 
 import { create } from "zustand";
 import { api } from "@/api";
-import type { AnalyzeResponse, Demo, Location, Mode, Region } from "@/api/types";
+import type { AnalyzeResponse, BBox, Boundary, Demo, Location, Mode, Region } from "@/api/types";
+import { boundaryLabel, fitDistance } from "@/features/globe/boundaries";
 import { locationCenter } from "@/lib/format";
 
-export type FocusTarget = { lat: number; lon: number; id: number };
+export type FocusTarget = { lat: number; lon: number; id: number; distance?: number };
 
 type AppState = {
   variableKey: string | null;
   location: Location | null;
   regionName: string | null;
+  boundary: Boundary | null; // the picked region when location is one
   regionType: string | null;
   start: string;
   end: string;
@@ -27,6 +29,8 @@ type AppState = {
   setLocation: (location: Location, regionName?: string | null) => void;
   clearLocation: () => void;
   pickRegion: (region: Region) => void;
+  pickBoundary: (boundary: Boundary) => void;
+  setBox: (box: BBox) => void;
   setRegionType: (type: string | null) => void;
   setPeriod: (start: string, end: string) => void;
   setMode: (mode: Mode) => void;
@@ -43,6 +47,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   variableKey: null,
   location: null,
   regionName: null,
+  boundary: null,
   regionType: null,
   start: "1980-01-01",
   end: today,
@@ -56,18 +61,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
 
   setVariable: (variableKey) => set({ variableKey, error: null }),
-  setLocation: (location, regionName = null) => set({ location, regionName, error: null }),
+  setLocation: (location, regionName = null) => set({ location, regionName, boundary: null, error: null }),
   clearLocation() {
     runId++;
-    set({ location: null, regionName: null, response: null, loading: false, error: null });
+    set({ location: null, regionName: null, boundary: null, response: null, loading: false, error: null });
   },
-  pickRegion: (region) =>
+  pickRegion(region) {
+    const center = locationCenter(region.location);
+    const distance = region.location.type === "bbox" ? fitDistance(region.location) : undefined;
     set({
       location: region.location,
       regionName: region.name,
-      focus: { ...locationCenter(region.location), id: Date.now() },
+      boundary: null,
+      focus: center && { ...center, distance, id: Date.now() },
+      error: null,
+    });
+  },
+  pickBoundary: (boundary) =>
+    set({
+      location: { type: "region", id: boundary.id },
+      regionName: boundaryLabel(boundary),
+      boundary,
+      focus: { lat: boundary.lat, lon: boundary.lon, distance: fitDistance(boundary), id: Date.now() },
       error: null,
     }),
+  setBox: (box) => set({ location: box, regionName: null, boundary: null, error: null }),
   setRegionType: (regionType) => set({ regionType }),
   setPeriod: (start, end) => set({ start, end, error: null }),
   setMode: (mode) => set({ mode, error: null }),

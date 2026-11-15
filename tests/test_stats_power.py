@@ -72,10 +72,14 @@ def test_parse_monthly_missing_parameter():
 
 
 def test_live_path_with_fake_http(monkeypatch, tmp_path):
+    from src import catalog
     from src.config import settings
 
     monkeypatch.setattr(settings, "data_mode", "live")
     monkeypatch.setattr(settings, "cache_dir", tmp_path)
+    # air temperature comes from the dataset now; point it at POWER to test that adapter end to end
+    power_t2m = catalog.get_variable("air_temperature").model_copy(update={"source": "nasa_power", "variable_id": "T2M"})
+    monkeypatch.setitem(catalog.variables(), "air_temperature", power_t2m)
     rng = np.random.default_rng(4)
     keys = [f"{y}{m:02d}" for y in range(2015, 2025) for m in range(1, 13)]
     payload = {

@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Vector2, Vector3, type DataTexture, type Mesh, type Texture } from "three";
+import { Vector2, Vector3, Vector4, type DataTexture, type Mesh, type Texture } from "three";
+import type { GridGeometry } from "@/api/types";
+import { BANDS, type Rgb } from "@/features/trendmap/styles";
 import { createFieldTexture, fieldGrid, smoothField, updateFieldTexture, type FieldGrid } from "./field";
 
 const vertexShader = `
-  varying vec2 vUv;
+  varying vec3 vDir;
   void main() {
-    vUv = uv;
+    vDir = position;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }`;
 
@@ -16,88 +18,170 @@ const fragmentShader = (bands: number) => `
   uniform sampler2D earth;
   uniform sampler2D fieldFrom;
   uniform sampler2D fieldTo;
+  uniform vec2 sizeFrom;
+  uniform vec2 sizeTo;
+  uniform vec4 placeFrom;
+  uniform vec4 placeTo;
+  uniform vec4 rangeFrom; // low, high, fade, isobars
+  uniform vec4 rangeTo;
+  uniform float stippleFrom;
+  uniform float stippleTo;
   uniform float blend;
   uniform bool crossfade;
-  uniform vec2 fieldSize;
-  uniform float maxFrom;
-  uniform float maxTo;
   uniform float opacity;
   uniform float presence;
-  uniform vec3 palette[${bands}];
-  varying vec2 vUv;
+  uniform vec3 palette[${bands * 2}]; // the "from" palette, then the "to" palette
+  varying vec3 vDir;
 
   // exact sRGB encoding, the same the Earth material outputs, so a hidden layer matches it pixel for pixel
   vec3 toSrgb(vec3 c) {
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
   }
 
-  vec3 shade(vec2 cell, float maxValue, vec3 ground) {
-    float band = (clamp(cell.r / maxValue, -1.0, 1.0) + 1.0) * 0.5 * ${bands}.0;
-    vec3 fill = palette[clamp(int(band), 0, ${bands - 1})];
-    float edge = round(band);
+  // place: first texel's lon/lat and the texel spacing in degrees; longitude wraps through the texture
+  vec4 sampleField(sampler2D field, vec2 size, vec4 place, vec2 lonLat) {
+    vec2 node = (lonLat - place.xy) / place.zw;
+    return texture2D(field, (node + 0.5) / size);
+  }
+
+  // dots on a lat/lon lattice that coarsens by powers of two as the globe zooms out, about 7 px apart
+  float stippleDots(vec2 lonLat) {
+    float px = max(length(fwidth(lonLat)), 1e-4);
+    float spacing = exp2(ceil(log2(px * 7.0)));
+    float c = max(cos(radians(lonLat.y)), 0.05);
+    float sx = spacing * exp2(floor(log2(1.0 / c) + 0.5));
+    vec2 g = (fract(lonLat / vec2(sx, spacing)) - 0.5) * vec2(sx * c, spacing);
+    return 1.0 - smoothstep(0.8, 1.5, length(g) / px);
+  }
+
+  // cell: value, mask (1 shown, 0 muted), coverage (1 data, 0 none), significance
+  vec3 shade(vec4 cell, vec4 range, float stipple, int offset, float dots, float polar, vec3 ground) {
+    float t = clamp((cell.r - range.x) / max(range.y - range.x, 1e-6) * 2.0 - 1.0, -1.0, 1.0);
+    float band = (t + 1.0) * 0.5 * ${bands}.0;
+    vec3 fill = palette[offset + clamp(int(band), 0, ${bands - 1})];
+    bool isobars = range.w > 0.5;
+    float edge = floor(band + 0.5);
     float gap = abs(band - edge) / max(fwidth(band), 1e-5);
-    float line = edge >= 1.0 && edge <= ${bands - 1}.0 ? 1.0 - smoothstep(0.4, 1.2, gap) : 0.0;
-    vec3 color = mix(ground, mix(fill, fill * 0.55, line), mix(opacity, min(1.0, opacity + 0.15), line));
+    // isobars on every other band edge, a little heavier than the band lines
+    bool onEdge = edge >= 1.0 && edge <= ${bands - 1}.0 && (!isobars || mod(edge, 2.0) < 0.5);
+    float line = onEdge ? (1.0 - smoothstep(isobars ? 0.7 : 0.4, isobars ? 1.7 : 1.2, gap)) * polar : 0.0;
+    // change palettes fade out near zero
+    float strength = range.z > 0.0 ? smoothstep(0.0, range.z, abs(t)) : 1.0;
+    // values have no zero to fade around and read better with a fuller fill
+    float fillAlpha = isobars ? 0.18 : (range.z > 0.0 ? opacity * strength : min(1.0, opacity + 0.2));
+    vec3 lineColor = isobars ? mix(fill, vec3(1.0), 0.2) : fill * 0.55;
+    float lineAlpha = line * (isobars ? 0.95 : min(1.0, opacity + 0.15)) * max(strength, isobars ? 0.35 : 0.0);
+    vec3 color = mix(mix(ground, fill, fillAlpha), lineColor, lineAlpha);
 
     float aa = max(fwidth(cell.g), 1e-4);
     float muted = 1.0 - smoothstep(0.5 - aa, 0.5 + aa, cell.g);
-    return mix(color, mix(ground, vec3(0.376, 0.4, 0.455), 0.3), muted);
+    color = mix(color, mix(ground, vec3(0.376, 0.4, 0.455), 0.3), muted);
+
+    float sigAa = max(fwidth(cell.a), 1e-4);
+    float significant = smoothstep(0.5 - sigAa, 0.5 + sigAa, cell.a) * stipple;
+    color = mix(color, vec3(0.04), dots * significant * 0.8);
+
+    float edgeAa = max(fwidth(cell.b), 1e-4);
+    return mix(ground, color, smoothstep(0.5 - edgeAa, 0.5 + edgeAa, cell.b));
   }
 
   void main() {
-    vec3 rgb = toSrgb(texture2D(earth, vUv).rgb);
+    // from the surface position, not the uv: uv longitude breaks down in the triangles at the poles
+    vec3 dir = normalize(vDir);
+    vec2 lonLat = vec2(degrees(atan(dir.z, -dir.x)) - 180.0, degrees(asin(clamp(dir.y, -1.0, 1.0))));
+    lonLat.x += lonLat.x < -180.0 ? 360.0 : 0.0;
+    // the imagery too; derivatives taken across the 180 degree seam without the jump, so no seam line
+    vec2 uv = vec2((lonLat.x + 180.0) / 360.0, (lonLat.y + 90.0) / 180.0);
+    vec2 dx = dFdx(uv);
+    vec2 dy = dFdy(uv);
+    // longitude texels crowd together toward the poles; without this the pole samples a blurred mip
+    float squeeze = cos(radians(lonLat.y));
+    dx.x = (dx.x - floor(dx.x + 0.5)) * squeeze;
+    dy.x = (dy.x - floor(dy.x + 0.5)) * squeeze;
+    vec3 rgb = toSrgb(textureGrad(earth, uv, dx, dy).rgb);
     float grey = clamp((dot(rgb, vec3(0.2126, 0.7152, 0.0722)) * 0.9 - 0.5) * 1.2 + 0.5, 0.0, 1.0);
     vec3 ground = vec3(grey);
+    float dots = stippleDots(lonLat);
+    // all meridians meet at a pole, so any band line crossing a nearly flat polar field becomes a spoke
+    float polar = smoothstep(88.5, 85.5, abs(lonLat.y));
 
-    // grid rows run pole to pole, columns start at -180° and wrap
-    vec2 node = vUv * vec2(fieldSize.x, fieldSize.y - 1.0);
-    vec2 at = (node + 0.5) / fieldSize;
-    vec2 from = texture2D(fieldFrom, at).rg;
-    vec2 to = texture2D(fieldTo, at).rg;
+    vec4 from = sampleField(fieldFrom, sizeFrom, placeFrom, lonLat);
+    vec4 to = sampleField(fieldTo, sizeTo, placeTo, lonLat);
 
-    // same scale: the values morph, so contours move; a different scale: the two pictures fade
+    // same quantity and scale: the values morph, so contours move; otherwise the two pictures fade
     vec3 color = crossfade
-      ? mix(shade(from, maxFrom, ground), shade(to, maxTo, ground), blend)
-      : shade(mix(from, to, blend), maxTo, ground);
+      ? mix(shade(from, rangeFrom, stippleFrom, 0, dots, polar, ground), shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground), blend)
+      : shade(mix(from, to, blend), rangeTo, stippleTo, ${bands}, dots, polar, ground);
     // fades from the plain imagery, so the hand-over to the Earth underneath is seamless
     gl_FragColor = vec4(mix(rgb, color, presence), 1.0);
   }`;
 
+// how a field is coloured: BANDS colours spread from lo to hi
+export type FieldLook = {
+  palette: Rgb[];
+  lo: number;
+  hi: number;
+  fade: number; // share of the scale around zero that fades out (0: none)
+  isobars: boolean;
+  stipple: boolean; // dots where sig is set
+};
+
 type FieldLayerProps = {
   earth: Texture;
-  values: ArrayLike<number | null>;
+  values: ArrayLike<number | null>; // null where a cell has no data
   mask?: ArrayLike<number> | null;
+  sig?: ArrayLike<number> | null;
   nlat: number;
   nlon: number;
-  max: number;
-  colors: [number, number, number][];
+  grid: GridGeometry;
+  look: FieldLook;
+  quantity?: string; // what the values are; a change crossfades instead of morphing
   opacity?: number;
   transition?: number; // seconds to move into a new field, and to fade in or out; 0 switches at once
   visible?: boolean;
 };
 
-type Frames = {
-  from: DataTexture;
-  to: DataTexture;
-  fromData: Float32Array;
-  toData: Float32Array;
-  fromMax: number;
-  toMax: number;
-  crossfade: boolean;
-  t: number;
-  started: boolean;
-};
+type Slot = { texture: DataTexture; field: FieldGrid; look: FieldLook };
+
+type Frames = { from: Slot; to: Slot; quantity: string; crossfade: boolean; t: number; started: boolean };
 
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
+const sameShape = (a: FieldGrid, b: FieldGrid) =>
+  a.width === b.width && a.height === b.height && a.origin.every((v, i) => v === b.origin[i]);
+
+// same colours for the same numbers, so a change of data can morph
+const sameScale = (a: FieldLook, b: FieldLook) =>
+  a.palette === b.palette && a.lo === b.lo && a.hi === b.hi && a.fade === b.fade && a.isobars === b.isobars;
+
+function makeSlot(field: FieldGrid, look: FieldLook): Slot {
+  return { texture: createFieldTexture(field), field, look };
+}
+
+function refill(slot: Slot, field: FieldGrid, look: FieldLook) {
+  if (sameShape(slot.field, field)) updateFieldTexture(slot.texture, field.data);
+  else {
+    slot.texture.dispose();
+    slot.texture = createFieldTexture(field);
+  }
+  slot.field = field;
+  slot.look = look;
+}
+
+const setRange = (target: Vector4, look: FieldLook) => target.set(look.lo, look.hi, look.fade, look.isobars ? 1 : 0);
+
+const place = (target: Vector4, field: FieldGrid) => target.set(field.origin[0], field.origin[1], field.step[0], field.step[1]);
 
 export default function FieldLayer({
   earth,
   values,
   mask = null,
+  sig = null,
   nlat,
   nlon,
-  max,
-  colors,
+  grid,
+  look,
+  quantity = "",
   opacity = 0.6,
   transition = 0,
   visible = true,
@@ -107,59 +191,51 @@ export default function FieldLayer({
   const warmedUp = useRef(false);
   const presence = useRef({ value: 0, started: false });
   const frames = useRef<Frames | null>(null);
-  const grid = useMemo(() => fieldGrid(smoothField(values, nlat, nlon), mask, nlat, nlon), [values, mask, nlat, nlon]);
-  const size = useRef<FieldGrid | null>(null);
+  const field = useMemo(
+    () => fieldGrid(smoothField(values, nlat, nlon, grid), mask, sig, nlat, nlon, grid),
+    [values, mask, sig, nlat, nlon, grid],
+  );
 
   useEffect(() => {
     const f = frames.current;
-    if (f && size.current === grid && f.toMax === max) return;
-    const sameShape = f && size.current?.width === grid.width && size.current.height === grid.height;
-    size.current = grid;
-    if (!f || !sameShape) {
-      f?.from.dispose();
-      f?.to.dispose();
-      frames.current = {
-        from: createFieldTexture(grid),
-        to: createFieldTexture(grid),
-        fromData: grid.data,
-        toData: grid.data,
-        fromMax: max,
-        toMax: max,
-        crossfade: false,
-        t: 1,
-        started: true,
-      };
+    if (f && f.to.field === field && f.to.look === look && f.quantity === quantity) return;
+    if (!f) {
+      frames.current = { from: makeSlot(field, look), to: makeSlot(field, look), quantity, crossfade: false, t: 1, started: true };
+    } else if (f.to.field === field && f.quantity === quantity && sameScale(f.to.look, look)) {
+      // only stippling changed: no transition needed
+      f.to.look = look;
     } else if (transition <= 0) {
-      updateFieldTexture(f.to, grid.data);
-      Object.assign(f, { toData: grid.data, fromMax: max, toMax: max, t: 1 });
+      refill(f.to, field, look);
+      Object.assign(f, { quantity, t: 1 });
     } else {
+      const morph = f.quantity === quantity && sameScale(f.to.look, look) && sameShape(f.to.field, field);
       // start from whatever is on screen, even when a transition is still running;
       // a fade cut short restarts from whichever picture was already more visible
       const running = f.t < 1;
       if (running && !f.crossfade) {
         const k = ease(f.t);
-        const shown = f.fromData.map((v, i) => v + (f.toData[i] - v) * k);
-        updateFieldTexture(f.from, shown);
-        Object.assign(f, { fromData: shown, fromMax: f.toMax });
+        const shown = f.from.field.data.map((v, i) => v + (f.to.field.data[i] - v) * k);
+        refill(f.from, { ...f.to.field, data: shown }, f.to.look);
       } else if (!running || f.t > 0.5) {
         [f.from, f.to] = [f.to, f.from];
-        Object.assign(f, { fromData: f.toData, fromMax: f.toMax });
       }
-      updateFieldTexture(f.to, grid.data);
-      Object.assign(f, { toData: grid.data, toMax: max, crossfade: f.fromMax !== max, t: 0, started: false });
+      refill(f.to, field, look);
+      Object.assign(f, { quantity, crossfade: !morph, t: 0, started: false });
     }
     invalidate();
-  }, [grid, max, transition, invalidate]);
+  }, [field, look, quantity, transition, invalidate]);
 
   useEffect(() => {
     presence.current.started = false;
     invalidate();
   }, [visible, invalidate]);
 
+  useEffect(() => invalidate(), [opacity, invalidate]);
+
   useEffect(
     () => () => {
-      frames.current?.from.dispose();
-      frames.current?.to.dispose();
+      frames.current?.from.texture.dispose();
+      frames.current?.to.texture.dispose();
     },
     [],
   );
@@ -167,27 +243,32 @@ export default function FieldLayer({
   const material = useMemo(
     () => ({
       vertexShader,
-      fragmentShader: fragmentShader(colors.length),
+      fragmentShader: fragmentShader(BANDS),
       uniforms: {
         earth: { value: null as Texture | null },
         fieldFrom: { value: null as Texture | null },
         fieldTo: { value: null as Texture | null },
+        sizeFrom: { value: new Vector2() },
+        sizeTo: { value: new Vector2() },
+        placeFrom: { value: new Vector4() },
+        placeTo: { value: new Vector4() },
+        rangeFrom: { value: new Vector4(-1, 1, 0, 0) },
+        rangeTo: { value: new Vector4(-1, 1, 0, 0) },
+        stippleFrom: { value: 0 },
+        stippleTo: { value: 0 },
         blend: { value: 1 },
         crossfade: { value: false },
-        fieldSize: { value: new Vector2() },
-        maxFrom: { value: 1 },
-        maxTo: { value: 1 },
         opacity: { value: 0.6 },
         presence: { value: 0 },
-        palette: { value: colors.map(([r, g, b]) => new Vector3(r / 255, g / 255, b / 255)) },
+        palette: { value: Array.from({ length: BANDS * 2 }, () => new Vector3()) },
       },
     }),
-    [colors],
+    [],
   );
 
   useFrame((_, delta) => {
     const f = frames.current;
-    if (!f || !size.current) return;
+    if (!f) return;
     // a hitch (shader compile, tab switch) should not swallow a transition
     const step = Math.min(delta, 0.1);
     if (f.t < 1) {
@@ -210,13 +291,21 @@ export default function FieldLayer({
     warmedUp.current = true;
     const u = material.uniforms;
     u.earth.value = earth;
-    u.fieldFrom.value = f.from;
-    u.fieldTo.value = f.to;
+    u.fieldFrom.value = f.from.texture;
+    u.fieldTo.value = f.to.texture;
+    u.sizeFrom.value.set(f.from.field.width, f.from.field.height);
+    u.sizeTo.value.set(f.to.field.width, f.to.field.height);
+    place(u.placeFrom.value, f.from.field);
+    place(u.placeTo.value, f.to.field);
+    setRange(u.rangeFrom.value, f.from.look);
+    setRange(u.rangeTo.value, f.to.look);
+    u.stippleFrom.value = f.from.look.stipple ? 1 : 0;
+    u.stippleTo.value = f.to.look.stipple ? 1 : 0;
+    const palette = u.palette.value;
+    f.from.look.palette.forEach(([r, g, b], k) => palette[k].set(r / 255, g / 255, b / 255));
+    f.to.look.palette.forEach(([r, g, b], k) => palette[BANDS + k].set(r / 255, g / 255, b / 255));
     u.blend.value = ease(f.t);
-    u.fieldSize.value.set(size.current.width, size.current.height);
     u.crossfade.value = f.crossfade;
-    u.maxFrom.value = f.fromMax;
-    u.maxTo.value = f.toMax;
     u.opacity.value = opacity;
     u.presence.value = ease(p.value);
   });

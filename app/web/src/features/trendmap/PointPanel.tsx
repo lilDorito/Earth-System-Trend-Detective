@@ -14,6 +14,8 @@ import TrendChart from "./TrendChart";
 
 export default function PointPanel({ point, loading }: { point: TrendPoint; loading: boolean }) {
   const clearSelection = useTrendMapStore((s) => s.clearSelection);
+  const units = useTrendMapStore((s) => s.meta?.units ?? "");
+  const city = useTrendMapStore((s) => s.picked?.name);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && clearSelection();
@@ -32,8 +34,17 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
       <Panel>
         <div className="flex items-center justify-between gap-2 px-4 py-3">
           <div>
-            <Label>Grid cell</Label>
-            <p className="font-mono text-sm tabular-nums">{formatLatLon(point.lat, point.lon)}</p>
+            {city ? (
+              <>
+                <p className="text-sm font-semibold">{city}</p>
+                <p className="font-mono text-xs tabular-nums text-muted-foreground">cell {formatLatLon(point.lat, point.lon)}</p>
+              </>
+            ) : (
+              <>
+                <Label>Grid cell</Label>
+                <p className="font-mono text-sm tabular-nums">{formatLatLon(point.lat, point.lon)}</p>
+              </>
+            )}
           </div>
           <div className="-mr-1.5 flex items-center gap-1">
             {loading && <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />}
@@ -46,7 +57,7 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
         <PanelSection className="space-y-2">
           <p className="flex items-baseline gap-2">
             <span className="font-mono text-2xl font-medium tabular-nums">{formatSigned(point.slope_decade)}</span>
-            <span className="text-sm text-muted-foreground">°C / decade</span>
+            <span className="text-sm text-muted-foreground">{units} / decade</span>
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Status tone={point.significant_hr ? "success" : "muted"}>
@@ -60,7 +71,7 @@ export default function PointPanel({ point, loading }: { point: TrendPoint; load
         </PanelSection>
 
         <PanelSection>
-          <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} height={200} />
+          <TrendChart years={point.years} values={point.values} fitted={point.fitted} rolling={point.rolling} units={units} height={200} />
         </PanelSection>
       </Panel>
     </motion.aside>

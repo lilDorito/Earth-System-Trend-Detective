@@ -4,30 +4,37 @@ import { useEffect, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { LoaderCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import ExtremaLabels from "@/features/globe/ExtremaLabels";
 import FieldLayer from "@/features/globe/FieldLayer";
 import GlobeCanvas from "@/features/globe/GlobeCanvas";
+import Outline from "@/features/globe/Outline";
 import { useEarthTexture } from "@/features/globe/useEarthTexture";
+import { useOutline } from "@/features/globe/useOutline";
+import WindLayer from "@/features/globe/WindLayer";
 import ControlPanel from "@/features/trendmap/ControlPanel";
 import PointPanel from "@/features/trendmap/PointPanel";
 import RegionPanel from "@/features/trendmap/RegionPanel";
 import TimelineBar from "@/features/trendmap/TimelineBar";
-import { bandColors, FRAME_MAX, MAX_TREND } from "@/features/trendmap/trendLayer";
-import { useTrendMapStore } from "@/store/useTrendMapStore";
+import { useTrendLayer } from "@/features/trendmap/useTrendLayer";
+import { targetArea, useTrendMapStore } from "@/store/useTrendMapStore";
 
 export default function TrendMapPage() {
   const s = useTrendMapStore(
     useShallow((s) => ({
-      grid: s.grid,
-      frames: s.frames,
-      view: s.view,
-      frameYear: s.frameYear,
+      meta: s.meta,
+      wind: s.wind,
+      loading: s.loading,
       region: s.region,
+      regionTarget: s.regionTarget,
+      setRegion: s.setRegion,
+      focus: s.focus,
       showTrend: s.showTrend,
+      opacity: s.opacity,
       error: s.error,
-      onlySignificant: s.onlySignificant,
       picked: s.picked,
       selected: s.selected,
       pointLoading: s.pointLoading,
+      pointError: s.pointError,
       load: s.load,
       selectPoint: s.selectPoint,
       clearSelection: s.clearSelection,
@@ -38,34 +45,37 @@ export default function TrendMapPage() {
     void s.load();
   }, [s.load]);
 
-  // built even while hidden, so switching the layer on can fade in at once
-  const layer = useMemo(() => {
-    if (s.view === "years" && s.frames) {
-      const { n_lat, n_lon, years, frames } = s.frames;
-      const index = years.indexOf(s.frameYear);
-      if (index < 0) return null;
-      return { nlat: n_lat, nlon: n_lon, values: frames[index], mask: null, max: FRAME_MAX };
-    }
-    if (!s.grid) return null;
-    const { n_lat, n_lon, slope, sig } = s.grid;
-    return { nlat: n_lat, nlon: n_lon, values: slope, mask: s.onlySignificant ? sig : null, max: MAX_TREND };
-  }, [s.grid, s.frames, s.view, s.frameYear, s.onlySignificant]);
+  const { layer, style, edges, highsLows } = useTrendLayer();
+  const name = s.meta?.name ?? "trend data";
   const texture = useEarthTexture();
+  const area = useMemo(() => (s.regionTarget ? targetArea(s.regionTarget) : null), [s.regionTarget]);
+  const outline = useOutline(area);
 
   return (
     <div className="relative h-full overflow-hidden">
       <GlobeCanvas
         texture={texture}
         marker={s.picked}
-        autoRotate={!s.picked}
-        hint="Click to inspect a grid cell, right-click to clear"
+        outline={outline}
+        focus={s.focus}
+        autoRotate={!s.picked && !s.regionTarget}
+        hint="Click to inspect a grid cell, shift-drag for a box, right-click to clear"
         detail={!s.showTrend}
-        onPick={(lat, lon) => void s.selectPoint(lat, lon)}
+        onPick={(lat, lon, city) => void s.selectPoint(lat, lon, city)}
         onClear={s.clearSelection}
-        loading={s.showTrend && !layer && !s.error ? "Loading trend data" : null}
+        onBox={(box) => void s.setRegion({ kind: "box", box })}
+        loading={s.showTrend && (s.loading || !layer) && !s.error ? `Loading ${name.toLowerCase()}` : null}
       >
-        {layer && texture && (
-          <FieldLayer earth={texture} colors={bandColors} transition={1.1} visible={s.showTrend} {...layer} />
+        {layer && texture && <FieldLayer earth={texture} transition={1.1} visible={s.showTrend} opacity={s.opacity} {...layer} />}
+        {style.wind && s.wind && (
+          <WindLayer u={s.wind.u} v={s.wind.v} nlat={s.wind.n_lat} nlon={s.wind.n_lon} grid={s.wind} visible={s.showTrend} />
+        )}
+        <ExtremaLabels points={highsLows} visible={s.showTrend} />
+        {s.showTrend && edges && (
+          <>
+            <Outline rings={edges.first} color={0xfd8d3c} width={1.5} dashed />
+            <Outline rings={edges.shown} color={0xf4fbff} width={1.8} />
+          </>
         )}
       </GlobeCanvas>
       <ControlPanel />
@@ -78,6 +88,9 @@ export default function TrendMapPage() {
         <div className="absolute bottom-3 right-4 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" /> loading cell
         </div>
+      )}
+      {s.pointError && !s.pointLoading && (
+        <div className="absolute bottom-3 right-4 font-mono text-[11px] text-warning">{s.pointError}</div>
       )}
     </div>
   );

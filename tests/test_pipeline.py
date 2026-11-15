@@ -16,7 +16,7 @@ def test_pipeline_trend_shape():
     series, processed, result = pipeline.analyze("air_temperature", KYIV, date(1980, 1, 1), date(2026, 9, 1))
     validate_series(series.df)
     validate_series(processed, PROCESSED_COLUMNS)
-    assert result.mode == "trend" and result.n > 500
+    assert result.mode == "trend" and result.n > 300  # monthly since 2000
 
 
 def test_pipeline_event_shape():

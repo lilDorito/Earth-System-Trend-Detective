@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from ..contracts import BBox, Location, Series, VariableInfo
+from ..contracts import Location, Point, Series, VariableInfo
 from .base import SourceError
 
 TIMESERIES_URL = "https://api.giovanni.earthdata.nasa.gov/timeseries"
@@ -13,7 +13,7 @@ class GiovanniPointSource:
     name = "giovanni_point"
 
     def fetch(self, variable: VariableInfo, location: Location, start: date, end: date) -> Series:
-        if isinstance(location, BBox):
+        if not isinstance(location, Point):
             raise SourceError("Giovanni time series takes a single point; use harmony_area for regions")
         # TODO(data): cache -> request -> parse -> convert
         raise NotImplementedError("Giovanni adapter not implemented yet, run with DATA_MODE=mock")

@@ -16,6 +16,7 @@ export default function TimelineBar() {
   const s = useTrendMapStore(
     useShallow((s) => ({
       frames: s.frames,
+      units: s.meta?.units ?? "",
       view: s.view,
       frameYear: s.frameYear,
       setFrameYear: s.setFrameYear,
@@ -67,7 +68,7 @@ export default function TimelineBar() {
             {mean != null && (
               <p className="font-mono text-sm tabular-nums">
                 <span className="text-muted-foreground">world </span>
-                {formatSigned(mean)} °C
+                {formatSigned(mean)} {s.units}
               </p>
             )}
           </div>
@@ -80,7 +81,7 @@ export default function TimelineBar() {
                 <button
                   key={year}
                   type="button"
-                  title={`${year}: ${formatSigned(v ?? 0)} °C`}
+                  title={`${year}: ${formatSigned(v ?? 0)} ${s.units}`}
                   className="flex h-full flex-1 cursor-pointer items-center"
                   onClick={() => {
                     setPlaying(false);

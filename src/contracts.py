@@ -5,10 +5,10 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Resolution = Literal["hourly", "3-hourly", "daily", "monthly"]
-SourceName = Literal["giovanni_point", "harmony_area", "nasa_power", "firms", "appeears", "mock"]
+SourceName = Literal["giovanni_point", "harmony_area", "nasa_power", "hf_grid", "firms", "appeears", "mock"]
 Mode = Literal["trend", "event"]
 
 SERIES_COLUMNS = ("time", "value")
@@ -28,8 +28,27 @@ class BBox(BaseModel):
     east: float = Field(ge=-180, le=180)
     north: float = Field(ge=-90, le=90)
 
+    # west > east is a box across 180 degrees
+    @model_validator(mode="after")
+    def check(self):
+        if self.south >= self.north:
+            raise ValueError("bbox south must be below north")
+        if self.west == self.east:
+            raise ValueError("bbox west and east must differ")
+        return self
 
-Location = Annotated[Point | BBox, Field(discriminator="type")]
+    @property
+    def center(self) -> tuple[float, float]:
+        width = (self.east - self.west) % 360
+        return (self.south + self.north) / 2, (self.west + width / 2 + 180) % 360 - 180
+
+
+class Region(BaseModel):
+    type: Literal["region"] = "region"
+    id: str = Field(min_length=1, description="Natural Earth region id, see /api/boundaries")
+
+
+Location = Annotated[Point | BBox | Region, Field(discriminator="type")]
 
 
 class VariableInfo(BaseModel):
@@ -58,6 +77,8 @@ class SeriesMeta(BaseModel):
     location: Location
     grid_lat: float | None = None
     grid_lon: float | None = None
+    cells: int | None = None  # grid cells averaged, for areas
+    coverage: float | None = None  # share of the area with data
     region_name: str | None = None
     source: SourceName
     from_cache: bool = False

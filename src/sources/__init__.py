@@ -3,6 +3,7 @@
 from .base import Source
 from .giovanni import GiovanniPointSource
 from .harmony import HarmonyAreaSource
+from .hf_grid import HfGridSource
 from .mock import MockSource
 from .power import PowerPointSource
 
@@ -11,6 +12,7 @@ SOURCES: dict[str, Source] = {
     "giovanni_point": GiovanniPointSource(),
     "harmony_area": HarmonyAreaSource(),
     "nasa_power": PowerPointSource(),
+    "hf_grid": HfGridSource(),
     # "firms": FirmsSource(),        # optional, war-impact demo
     # "appeears": AppeearsSource(),  # optional, NDVI / night lights
 }

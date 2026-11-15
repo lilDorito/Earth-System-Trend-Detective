@@ -1,18 +1,7 @@
-"""Monthly 1-degree grids from NASA GES DISC products (GLDAS, IMERG, MERRA-2).
-
-Granules are streamed through earthaccess (raw files are never saved), regridded
-to a 1x1 degree grid and written as one CSV slice per variable and month
-(data/nasa_grid/parts). `assemble` joins the slices into one long-format CSV per
-variable (data/nasa_grid/processed). Finished months are skipped, so every
-command can be rerun.
-
-    python scripts/ingest/nasa_grid.py list
-    python scripts/ingest/nasa_grid.py inspect gldas_evap
-    python scripts/ingest/nasa_grid.py run --dry-run
-    python scripts/ingest/nasa_grid.py run gldas_evap gldas_precip
-    python scripts/ingest/nasa_grid.py assemble
-    python scripts/ingest/nasa_grid.py check --lat 50.5 --lon 30.5
-"""
+# monthly 1-degree grids from NASA GES DISC (GLDAS, IMERG, MERRA-2): granules are streamed, regridded and
+# written as one CSV slice per variable and month; `assemble` joins them. Finished months are skipped.
+#
+#   python scripts/ingest/nasa_grid.py list | inspect gldas_evap | run [--dry-run] [keys] | assemble | check
 
 import argparse
 import calendar
@@ -78,11 +67,7 @@ VARIABLES = {
 }
 
 
-# --------------------------------------------------------------------------
-# Earthdata access
-# --------------------------------------------------------------------------
 def retry(fn, *args, what="request", **kwargs):
-    """Call fn, retrying network failures with a growing pause."""
     for attempt in range(1, RETRIES + 1):
         try:
             return fn(*args, **kwargs)
@@ -96,8 +81,8 @@ def retry(fn, *args, what="request", **kwargs):
             time.sleep(wait)
 
 
+# EARTHDATA_TOKEN if set, otherwise an interactive login saved to ~/.netrc
 def login():
-    """Log in with EARTHDATA_TOKEN if set, otherwise interactively (saved to ~/.netrc)."""
     import earthaccess
 
     if os.environ.get("EARTHDATA_TOKEN"):
@@ -122,7 +107,6 @@ def search_granules(short_name, version, start, end):
 
 
 def open_granule(granule):
-    """Open a granule as a file-like object for streaming."""
     import earthaccess
 
     files = earthaccess.open([granule])
@@ -131,8 +115,8 @@ def open_granule(granule):
     return files[0]
 
 
+# variables sit in the file root, or in the /Grid group for IMERG
 def open_dataset(fobj):
-    """Open a NASA NetCDF file; variables may sit in the /Grid group (IMERG)."""
     import xarray as xr
 
     ds = xr.open_dataset(fobj, engine="h5netcdf")
@@ -154,16 +138,9 @@ def open_dataset(fobj):
     raise RuntimeError("No variables in the file root or in the Grid group")
 
 
-# --------------------------------------------------------------------------
-# Regridding to 1 degree
-# --------------------------------------------------------------------------
+# area-weighted (cos latitude) mean of source cells into the 1-degree cell holding each cell's centre;
+# returns (values, valid_frac), both (180, 360), values NaN where the valid area share is too small
 def to_1deg(data, lats, lons, min_valid_frac=MIN_VALID_FRAC):
-    """Area-weighted (cos latitude) mean of source cells into 1-degree cells.
-
-    A source cell belongs to the 1-degree cell that contains its center.
-    Returns (values, valid_frac), both (180, 360) float32. values is NaN where
-    the valid area share is below min_valid_frac.
-    """
     data = np.asarray(data, dtype=float)
     lats = np.asarray(lats, dtype=float)
     lons = ((np.asarray(lons, dtype=float) + 180.0) % 360.0) - 180.0
@@ -204,7 +181,6 @@ def convert_units(data, kind, year, month):
 
 
 def regrid_variable(ds, var, convert):
-    """Return (year, month, values_1deg, valid_frac) for one variable of an open file."""
     if var not in ds.variables:
         raise KeyError(f"{var!r} not in file. Available: {sorted(ds.data_vars)}")
     lat_name = next(n for n in ("lat", "latitude") if n in ds.variables or n in ds.coords)
@@ -224,10 +200,12 @@ def regrid_variable(ds, var, convert):
     return year, month, values, frac
 
 
-def write_slice(values, path, column="value"):
-    """Write finite cells as lat,lon,<column> (cells without data are omitted)."""
+# cells with data only; valid_frac is kept per month because the valid area changes (IMERG gaps)
+def write_slice(values, path, frac=None):
     iy, ix = np.nonzero(np.isfinite(values))
-    df = pd.DataFrame({"lat": LAT[iy], "lon": LON[ix], column: values[iy, ix]})
+    df = pd.DataFrame({"lat": LAT[iy], "lon": LON[ix], "value": values[iy, ix]})
+    if frac is not None:
+        df["valid_frac"] = frac[iy, ix]
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".part")
@@ -235,15 +213,11 @@ def write_slice(values, path, column="value"):
     os.replace(tmp, path)
 
 
-# --------------------------------------------------------------------------
-# Commands
-# --------------------------------------------------------------------------
 def part_path(key, year, month):
     return PARTS / key / f"{year:04d}-{month:02d}.csv"
 
 
 def granule_month(granule):
-    """(year, month) from granule metadata, or None."""
     try:
         begin = granule["umm"]["TemporalExtent"]["RangeDateTime"]["BeginningDateTime"]
         return int(begin[:4]), int(begin[5:7])
@@ -265,7 +239,6 @@ def cmd_list(args):
 
 
 def cmd_inspect(args):
-    """Print variables, units and dimensions of one granule."""
     spec = VARIABLES[args.key]
     start = f"{args.year}-{args.month:02d}-01"
     end = f"{args.year}-{args.month:02d}-28"
@@ -289,7 +262,6 @@ def cmd_inspect(args):
 
 
 def cmd_run(args):
-    """Stream granules and write 1-degree monthly slices."""
     keys = pick_keys(args.keys)
     groups = collections.OrderedDict()
     for key in keys:
@@ -325,10 +297,7 @@ def cmd_run(args):
             try:
                 results = retry(process, granule, need, what=f"granule {ym}")
                 for k, (year, month, values, frac) in results.items():
-                    write_slice(values, part_path(k, year, month))
-                    frac_path = PARTS / k / "valid_frac.csv"
-                    if not frac_path.exists():
-                        write_slice(frac, frac_path, column="valid_frac")
+                    write_slice(values, part_path(k, year, month), frac)
                 done += 1
                 year, month = next(iter(results.values()))[:2]
                 print(f"  {year}-{month:02d} ok, variables: {len(results)} ({done}/{len(pending)})")
@@ -342,13 +311,14 @@ def cmd_run(args):
     print("\nDone. Next: python scripts/ingest/nasa_grid.py assemble")
 
 
+# monthly slices -> processed/<variable>.csv (date, lat, lon, value, valid_frac)
 def cmd_assemble(args):
-    """Join monthly slices into data/nasa_grid/processed/<variable>.csv (date,lat,lon,value,valid_frac)."""
     for key in pick_keys(args.keys):
         parts_dir = PARTS / key
         if not parts_dir.exists():
             print(f"{key}: no slices in {parts_dir}, skipped")
             continue
+        # slices written before valid_frac was stored per month share one static file
         frac_path = parts_dir / "valid_frac.csv"
         frac = pd.read_csv(frac_path) if frac_path.exists() else None
 
@@ -358,6 +328,8 @@ def cmd_assemble(args):
             path = parts_dir / f"{t.year:04d}-{t.month:02d}.csv"
             if path.exists():
                 df = pd.read_csv(path)
+                if "valid_frac" not in df and frac is not None:
+                    df = df.merge(frac, on=["lat", "lon"], how="left")
                 df.insert(0, "date", t.strftime("%Y-%m-%d"))
                 frames.append(df)
         if not frames:
@@ -365,8 +337,6 @@ def cmd_assemble(args):
             continue
 
         out_df = pd.concat(frames, ignore_index=True)
-        if frac is not None:
-            out_df = out_df.merge(frac, on=["lat", "lon"], how="left")
         PROC.mkdir(parents=True, exist_ok=True)
         out = PROC / f"{key}.csv"
         out_df.to_csv(out, index=False, float_format="%.5g")
@@ -374,7 +344,6 @@ def cmd_assemble(args):
 
 
 def cmd_check(args):
-    """Report completeness of the assembled files and the series of one cell."""
     files = sorted(PROC.glob("*.csv"))
     if not files:
         raise SystemExit(f"No CSV files in {PROC}. Run `assemble` first.")
@@ -391,7 +360,7 @@ def cmd_check(args):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description="Monthly 1-degree grids from NASA GLDAS, IMERG and MERRA-2")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def years(sp):

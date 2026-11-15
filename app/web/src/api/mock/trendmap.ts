@@ -2,7 +2,18 @@
 
 import { createRandom } from "@/lib/random";
 import { REGIONS, type RegionName } from "../regions";
-import type { GlobalMean, TrendFrames, TrendGrid, TrendMeta, TrendPoint, TrendRegion } from "../types";
+import type {
+  GlobalMean,
+  GridGeometry,
+  TrendFrames,
+  TrendGrid,
+  TrendMeta,
+  TrendPoint,
+  TrendRegion,
+  TrendRegionQuery,
+  TrendVariable,
+  TrendWind,
+} from "../types";
 import { linearFit, rollingMean, round, twoSidedP } from "./stats";
 
 const STEP = 2.5;
@@ -11,6 +22,9 @@ const BASELINE_YEARS = 5;
 const YEARS = Array.from({ length: 25 }, (_, i) => FIRST_YEAR + i);
 const LATS = Array.from({ length: 180 / STEP + 1 }, (_, i) => -90 + i * STEP);
 const LONS = Array.from({ length: 360 / STEP }, (_, i) => -180 + i * STEP);
+
+const GEOMETRY: GridGeometry = { lat0: -90, lon0: -180, dlat: STEP, dlon: STEP };
+const VARIABLE: TrendVariable = { key: "merra2_t2m", name: "Air temperature (2 m)", units: "°C", group: "atmosphere", domain: "global" };
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const cosWeights = LATS.map((lat) => Math.cos(rad(lat)));
@@ -93,13 +107,27 @@ function summarize(values: number[]) {
 const nearest = (axis: number[], value: number) =>
   axis.reduce((best, v, i) => (Math.abs(v - value) < Math.abs(axis[best] - value) ? i : best), 0);
 
+export function trendVariables(): TrendVariable[] {
+  return [VARIABLE];
+}
+
 export function trendMeta(): TrendMeta {
-  return { demo: true, variable: "T2M", units: "°C", years: [YEARS[0], YEARS[YEARS.length - 1]], n_lat: LATS.length, n_lon: LONS.length };
+  return {
+    ...VARIABLE,
+    demo: true,
+    variable: VARIABLE.key,
+    years: [YEARS[0], YEARS[YEARS.length - 1]],
+    n_lat: LATS.length,
+    n_lon: LONS.length,
+    trend_scale: 0.6,
+    anomaly_scale: 2,
+    value_range: [-12, 16],
+  };
 }
 
 export function trendGrid(): TrendGrid {
   const { slope, sig } = getField();
-  return { n_lat: LATS.length, n_lon: LONS.length, slope, sig };
+  return { ...GEOMETRY, n_lat: LATS.length, n_lon: LONS.length, slope, sig };
 }
 
 export function trendGlobalMean(): GlobalMean {
@@ -132,7 +160,7 @@ export function trendPoint(lat: number, lon: number): TrendPoint {
 }
 
 // one anomaly map per year, relative to the mean of the first years
-export function trendFrames(): TrendFrames {
+export function trendFrames(kind: "anomaly" | "values" = "anomaly"): TrendFrames {
   const { values } = getField();
   const cells = LATS.length * LONS.length;
   const baseline = new Float64Array(cells);
@@ -146,7 +174,7 @@ export function trendFrames(): TrendFrames {
     const frame: number[] = new Array(cells);
     let sum = 0;
     for (let cell = 0; cell < cells; cell++) {
-      const anomaly = values[k * cells + cell] - baseline[cell];
+      const anomaly = values[k * cells + cell] - (kind === "values" ? 0 : baseline[cell]);
       frame[cell] = round(anomaly, 2);
       sum += anomaly * cosWeights[Math.floor(cell / LONS.length)];
     }
@@ -154,10 +182,12 @@ export function trendFrames(): TrendFrames {
     globalMean.push(round(sum / total));
   });
   return {
+    kind,
     start: YEARS[0],
     end: YEARS[YEARS.length - 1],
     years: YEARS,
     baseline: [YEARS[0], YEARS[BASELINE_YEARS - 1]],
+    ...GEOMETRY,
     n_lat: LATS.length,
     n_lon: LONS.length,
     frames,
@@ -165,20 +195,24 @@ export function trendFrames(): TrendFrames {
   };
 }
 
-export function trendRegion(name: string): TrendRegion {
-  if (!(name in REGIONS)) throw new Error(`Unknown region: ${name}`);
-  const { label, bbox } = REGIONS[name as RegionName];
-  const [south, north, west, east] = bbox;
+// presets by name, anything else (boundaries, drawn boxes) by its box; cells count by centre
+export function trendRegion(query: TrendRegionQuery): TrendRegion {
+  const preset = query.name && query.name in REGIONS ? REGIONS[query.name as RegionName] : null;
+  if (!preset && !query.box) throw new Error(`Unknown region: ${query.name}`);
+  const [south, north, west, east] = preset ? preset.bbox : [query.box!.south, query.box!.north, query.box!.west, query.box!.east];
+  const label = preset?.label ?? query.label ?? "Custom area";
+  const name = query.name ?? "box";
+  const inLon = (lon: number) => (west <= east ? lon >= west && lon <= east : lon >= west || lon <= east);
   const { values, slope } = getField();
   const cells = LATS.length * LONS.length;
 
   const members: number[] = [];
   LATS.forEach((lat, i) =>
     LONS.forEach((lon, j) => {
-      if (lat >= south && lat <= north && lon >= west && lon <= east) members.push(i * LONS.length + j);
+      if (lat >= south && lat <= north && inLon(lon)) members.push(i * LONS.length + j);
     }),
   );
-  if (!members.length) throw new Error("The grid has no cells inside this region");
+  if (!members.length) throw new Error("The mock grid (2.5 degrees) has no cell centre inside this area");
 
   const weight = (cell: number) => cosWeights[Math.floor(cell / LONS.length)];
   const weightSum = members.reduce((sum, cell) => sum + weight(cell), 0);
@@ -209,4 +243,18 @@ export function trendRegion(name: string): TrendRegion {
     ratio: Math.abs(world.slope_decade) < 0.02 ? null : region.slope_decade / world.slope_decade,
     share_warming: warming,
   };
+}
+
+// trade winds, westerlies and polar easterlies, with a little longitude wobble
+export function trendWind(): TrendWind {
+  const u: number[] = [];
+  const v: number[] = [];
+  LATS.forEach((lat) =>
+    LONS.forEach((lon) => {
+      const phi = rad(lat);
+      u.push(round(-6 * Math.cos(3 * phi) * Math.cos(phi) + 1.5 * Math.sin(rad(lon * 2)), 2));
+      v.push(round(-2.5 * Math.sin(6 * phi) * Math.cos(phi) + Math.cos(rad(lon * 3 + lat)), 2));
+    }),
+  );
+  return { ...GEOMETRY, start: YEARS[0], end: YEARS[YEARS.length - 1], n_lat: LATS.length, n_lon: LONS.length, u, v };
 }

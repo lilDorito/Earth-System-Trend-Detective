@@ -3,7 +3,7 @@
 import type { Api } from "../client";
 import { analyze } from "./analysis";
 import { demos, regions, regionTypes, variables } from "./catalog";
-import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion } from "./trendmap";
+import { trendFrames, trendGlobalMean, trendGrid, trendMeta, trendPoint, trendRegion, trendVariables, trendWind } from "./trendmap";
 
 function respond<T>(produce: () => T, latency = 250): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -23,11 +23,13 @@ export const mockApi: Api = {
   regions: () => respond(() => regions),
   regionTypes: () => respond(() => regionTypes),
   demos: () => respond(() => demos),
+  trendVariables: () => respond(trendVariables),
   trendMeta: () => respond(trendMeta),
   trendGrid: () => respond(trendGrid, 400),
   trendGlobalMean: () => respond(trendGlobalMean),
-  trendFrames: () => respond(trendFrames, 400),
-  trendRegion: (name) => respond(() => trendRegion(name)),
-  trendPoint: (lat, lon) => respond(() => trendPoint(lat, lon)),
+  trendFrames: (_, kind) => respond(() => trendFrames(kind), 400),
+  trendWind: () => respond(trendWind),
+  trendRegion: (_, region) => respond(() => trendRegion(region)),
+  trendPoint: (_, lat, lon) => respond(() => trendPoint(lat, lon)),
   analyze: (body) => respond(() => analyze(body), 500),
 };

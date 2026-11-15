@@ -6,11 +6,13 @@ from pathlib import Path
 import numpy as np
 from scipy.stats import norm
 
-from .config import ROOT
+from . import dataset
+from .config import ROOT, settings
 
 ALPHA = 0.05
 GRID_FILE = ROOT / "data" / "grid" / "annual.npz"
 CHUNK_CELLS = 20_000  # cells per block, keeps the pairwise-slope stack small
+DEMO_KEY = "merra2_t2m"
 
 
 @dataclass
@@ -18,9 +20,11 @@ class GridDataset:
     years: np.ndarray  # (n,)
     lat: np.ndarray  # (nlat,) ascending
     lon: np.ndarray  # (nlon,) -180..180 ascending
-    t2m: np.ndarray  # (n, nlat, nlon) annual mean (or anomaly), degC
+    values: np.ndarray  # (n, nlat, nlon) annual means, NaN where a cell has no data
     demo: bool
+    key: str = DEMO_KEY
     label: str = "T2M, annual mean"  # shown in the UI: what the numbers are and where they come from
+    units: str = "°C"
 
 
 def normalize(years, lat, lon, t2m):
@@ -64,16 +68,24 @@ def make_demo() -> GridDataset:
     return GridDataset(years, lat, lon, t2m.astype(np.float32), demo=True)
 
 
-def load_grid(path: Path = GRID_FILE) -> GridDataset:
+def load_grid(key: str = DEMO_KEY, path: Path = GRID_FILE) -> GridDataset:
+    # live: the Hugging Face dataset; mock: a local annual.npz (scripts/prepare_grid.py) or the synthetic field
+    if settings.data_mode == "live":
+        meta = dataset.variable(key)
+        annual = dataset.annual(key)
+        label = f"{meta['name']}, annual mean"
+        return GridDataset(annual.years, dataset.LAT, dataset.LON, annual.values, False, key, label, meta["units"])
+    if key != DEMO_KEY:
+        raise KeyError(f"Only {DEMO_KEY} is available with DATA_MODE=mock")
     if path.exists():
         with np.load(path) as f:
-            years, lat, lon, t2m = normalize(f["years"], f["lat"], f["lon"], f["t2m"])
+            years, lat, lon, values = normalize(f["years"], f["lat"], f["lon"], f["t2m"])
             label = str(f["label"]) if "label" in f.files else "T2M, annual mean"
-        return GridDataset(years, lat, lon, t2m.astype(np.float32), demo=False, label=label)
+        return GridDataset(years, lat, lon, values.astype(np.float32), demo=False, label=label)
     return make_demo()
 
 
-def _mann_kendall_block(x: np.ndarray):
+def _mann_kendall_block(x: np.ndarray, t: np.ndarray):
     n = x.shape[0]
     s = np.zeros(x.shape[1:], dtype=np.float32)
     slopes = []
@@ -81,11 +93,11 @@ def _mann_kendall_block(x: np.ndarray):
         for j in range(i + 1, n):
             diff = x[j] - x[i]
             s += np.sign(diff)
-            slopes.append(diff / (j - i))
+            slopes.append(diff / (t[j] - t[i]))
     sen = np.median(np.stack(slopes), axis=0)
 
     # lag-1 autocorrelation of residuals around the Sen line (positive part only)
-    t = np.arange(n, dtype=np.float32).reshape(n, 1)
+    t = (t - t[0]).astype(np.float32).reshape(n, 1)
     resid = x - sen * t
     resid = resid - np.median(resid, axis=0)
     denom = np.sum(resid * resid, axis=0)
@@ -100,14 +112,18 @@ def _mann_kendall_block(x: np.ndarray):
 
 
 # x: (years, lat, lon) -> Sen slope per year and an approximate autocorrelation-adjusted p
-# (simplified Hamed-Rao variance factor; single cells use pymannkendall in app/api/trendmap.py)
-def mann_kendall_grid(x: np.ndarray):
+# (simplified Hamed-Rao variance factor; single cells use pymannkendall in app/api/trendmap.py).
+# Only cells with every year present are tested, the rest stay NaN; years may have gaps.
+def mann_kendall_grid(x: np.ndarray, years: np.ndarray | None = None):
     shape = x.shape[1:]
+    t = np.arange(x.shape[0], dtype=np.float64) if years is None else np.asarray(years, dtype=np.float64)
     flat = x.reshape(x.shape[0], -1).astype(np.float32)
-    sen = np.empty(flat.shape[1], dtype=np.float32)
-    p = np.empty(flat.shape[1], dtype=np.float64)
-    for a in range(0, flat.shape[1], CHUNK_CELLS):
-        sen[a:a + CHUNK_CELLS], p[a:a + CHUNK_CELLS] = _mann_kendall_block(flat[:, a:a + CHUNK_CELLS])
+    cells = np.flatnonzero(np.isfinite(flat).all(axis=0))
+    sen = np.full(flat.shape[1], np.nan, dtype=np.float32)
+    p = np.full(flat.shape[1], np.nan, dtype=np.float64)
+    for a in range(0, len(cells), CHUNK_CELLS):
+        block = cells[a:a + CHUNK_CELLS]
+        sen[block], p[block] = _mann_kendall_block(flat[:, block], t)
     return sen.reshape(shape), p.reshape(shape)
 
 
@@ -127,16 +143,21 @@ def fdr_bh(p: np.ndarray) -> np.ndarray:
     return q.reshape(p.shape)
 
 
-def compute_grid(annual: np.ndarray):
-    sen, p = mann_kendall_grid(annual)
+def compute_grid(annual: np.ndarray, years: np.ndarray | None = None):
+    sen, p = mann_kendall_grid(annual, years)
     q = fdr_bh(p)
     return sen * 10, p, q, np.isfinite(q) & (q < ALPHA)
 
 
-def global_mean_series(t2m: np.ndarray, lat: np.ndarray) -> np.ndarray:
-    w = np.cos(np.deg2rad(lat))
-    return (t2m * w[None, :, None]).sum(axis=(1, 2)) / (w.sum() * t2m.shape[2])
+# area-weighted (cos latitude) mean per time step over the cells in mask (default: all), skipping NaN
+def selection_mean(values: np.ndarray, lat: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+    w = np.cos(np.deg2rad(lat))[:, None] * (np.ones(values.shape[1:]) if mask is None else mask)
+    finite = np.isfinite(values) & (w > 0)
+    weights = np.where(finite, w, 0.0)
+    total = weights.sum(axis=(1, 2))
+    with np.errstate(invalid="ignore"):
+        return (np.where(finite, values, 0.0) * weights).sum(axis=(1, 2)) / total
 
 
-def global_mean(ds: GridDataset) -> np.ndarray:
-    return global_mean_series(ds.t2m, ds.lat)
+def global_mean_series(values: np.ndarray, lat: np.ndarray) -> np.ndarray:
+    return selection_mean(values, lat)

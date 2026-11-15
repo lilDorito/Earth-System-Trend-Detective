@@ -1,3 +1,7 @@
+# NCEI GSOM monthly station data (CDO v2 API): choose stations, download in parts, build and merge
+#
+#   python scripts/ingest/ncei.py stations | extra-stations | download --part 0 --of 4 | build --part 0 --of 4 | merge
+
 import argparse
 import hashlib
 import json
@@ -20,6 +24,7 @@ DATASET = "GSOM"
 START_YEAR = 2000
 DEFAULT_END = "2026-09-30"
 
+# GSOM elements: temperature, precipitation, snow, extremes, day counts, wind
 FEATURES = [
     "TAVG",
     "TMAX",
@@ -47,8 +52,8 @@ RAW = DATA / "raw"
 STATE = DATA / "state"
 PROC = DATA / "processed"
 
-MIN_INTERVAL = 0.25
-DAILY_LIMIT = 9500
+MIN_INTERVAL = 0.25  # seconds between requests, under the API's 5 per second
+DAILY_LIMIT = 9500  # stop before the token's 10 000 requests per day
 
 
 class DailyLimit(Exception):
@@ -59,6 +64,7 @@ class ApiError(Exception):
     pass
 
 
+# requests made today with this token, kept on disk so separate runs share the daily limit
 class Budget:
     def __init__(self, token: str):
         self.path = STATE / f"requests_{hashlib.md5(token.encode()).hexdigest()[:8]}.json"
@@ -117,7 +123,10 @@ class Client:
             if r.status_code == 200:
                 text = r.text.strip() or "{}"
                 data = json.loads(text)
-                path.write_text(text)
+                # written whole or not at all: a half-written cache file would break every later run
+                tmp = path.with_suffix(".tmp")
+                tmp.write_text(text)
+                tmp.replace(path)
                 return data
             if r.status_code in (429, 500, 502, 503, 504):
                 wait = min(60, 2**attempt * 2)
@@ -151,6 +160,7 @@ def fetch_all_stations(cl: Client, end: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# the MERRA-2 cell (0.5 x 0.625 deg) holding each station, for comparisons with the grid
 def add_merra_cols(sel: pd.DataFrame) -> pd.DataFrame:
     sel = sel.copy()
     sel["merra_lat"] = ((sel["latitude"] + 90) / 0.5).round() * 0.5 - 90
@@ -220,6 +230,7 @@ def cmd_stations(a):
     )
 
 
+# (must start by, must end after, minimum coverage), tried in order; the last tier accepts any station
 EXTRA_TIERS = [
     ("2005-01-01", "2025-06-01", 0.8),
     ("2010-01-01", "2024-01-01", 0.5),
@@ -272,6 +283,7 @@ def cmd_extra_stations(a):
             pool = c.sort_values(
                 ["datacoverage", "maxdate", "mindate", "id"], ascending=[False, False, True, True]
             ).head(a.pool)
+            # pick the candidate farthest from the country's stations so far, to spread them out
             while len(placed) < need and not pool.empty:
                 ref = [(r.latitude, r.longitude) for r in base[base["country"] == cc].itertuples()]
                 ref += [(r["latitude"], r["longitude"]) for r in placed]
@@ -376,6 +388,7 @@ def load_selected():
     return pd.read_csv(path)
 
 
+# stations are split between people by idx, so parts never overlap
 def my_part(df, a):
     if not (0 <= a.part < a.of):
         sys.exit("--part must be between 0 and of-1")

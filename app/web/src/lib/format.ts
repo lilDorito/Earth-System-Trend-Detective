@@ -19,6 +19,14 @@ export function formatSigned(value: number, digits = 2): string {
   return value > 0 ? `+${text}` : text.replace("-", "−");
 }
 
+// fewest decimals that show `value` exactly (up to 4), e.g. 1.25 -> 2, 0.5 -> 1, 10 -> 0
+export function digitsFor(value: number): number {
+  for (let digits = 0; digits < 4; digits++) {
+    if (Math.abs(Math.round(value * 10 ** digits) - value * 10 ** digits) < 1e-6) return digits;
+  }
+  return 4;
+}
+
 export function formatP(p: number): string {
   return p < 0.001 ? "< 0.001" : p.toFixed(3);
 }
@@ -33,12 +41,17 @@ export function formatLatLon(lat: number, lon: number): string {
 
 export function formatLocation(location: Location): string {
   if (location.type === "point") return formatLatLon(location.lat, location.lon);
+  if (location.type === "region") return location.id;
   return `${formatLatLon(location.south, location.west)} to ${formatLatLon(location.north, location.east)}`;
 }
 
-export function locationCenter(location: Location): { lat: number; lon: number } {
+// null for a region: its centre lives in the boundary index, not in the location
+export function locationCenter(location: Location): { lat: number; lon: number } | null {
   if (location.type === "point") return { lat: location.lat, lon: location.lon };
-  return { lat: (location.south + location.north) / 2, lon: (location.west + location.east) / 2 };
+  if (location.type === "region") return null;
+  // west > east is a box across 180 degrees
+  const width = (location.east - location.west + 360) % 360;
+  return { lat: (location.south + location.north) / 2, lon: ((location.west + width / 2 + 540) % 360) - 180 };
 }
 
 export function formatMonth(iso: string): string {

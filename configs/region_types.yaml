@@ -16,7 +16,7 @@ region_types:
   coast:
     label: A coast
     hint: Coasts respond to both land and sea.
-    suggest: [air_temperature, precipitation]
+    suggest: [sea_surface_temperature, sea_level, air_temperature, precipitation]
   forest:
     label: A forest
     hint: Forests depend on water in the soil.

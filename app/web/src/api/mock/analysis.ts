@@ -19,6 +19,10 @@ function profileFor(key: string, lat: number): Profile {
       return { base: 55, amplitude: 18, trend: 0.8, noise: 14, eventShift: 0, floor: 0 };
     case "no2_column":
       return { base: 3e15, amplitude: 0.9e15, trend: -1.5e14, noise: 3.5e14, eventShift: -0.85e15, floor: 2e14 };
+    case "sea_surface_temperature":
+      return { base: 28 * coslat - 6, amplitude: 1 + 5 * (1 - coslat), trend: 0.2, noise: 0.4, eventShift: 0 };
+    case "sea_level":
+      return { base: 0, amplitude: 40, trend: 35, noise: 25, eventShift: 0 };
     default:
       return { base: 10, amplitude: 3, trend: 0.2, noise: 1, eventShift: 0 };
   }
@@ -42,8 +46,10 @@ export function analyze(req: AnalyzeRequest): AnalyzeResponse {
   const variable = variables.find((v) => v.key === req.variable);
   if (!variable) throw new Error(`Unknown variable '${req.variable}'`);
 
-  const { lat, lon } = locationCenter(req.location);
-  const rng = createRandom(`${variable.key}|${lat.toFixed(2)}|${lon.toFixed(2)}`);
+  // a region has no geometry here; any mid-latitude place gives a plausible series
+  const { lat, lon } = locationCenter(req.location) ?? { lat: 45, lon: 0 };
+  const place = req.location.type === "region" ? req.location.id : `${lat.toFixed(2)}|${lon.toFixed(2)}`;
+  const rng = createRandom(`${variable.key}|${place}`);
   const profile = profileFor(variable.key, lat);
   const start = req.start > variable.coverage_start ? req.start : variable.coverage_start;
   const months = monthRange(start, req.end);
@@ -85,8 +91,8 @@ export function analyze(req: AnalyzeRequest): AnalyzeResponse {
       units: variable.units,
       resolution: "monthly",
       location: req.location,
-      grid_lat: Math.round(lat * 2) / 2,
-      grid_lon: Math.round(lon * 2) / 2,
+      grid_lat: req.location.type === "point" ? Math.round(lat * 2) / 2 : null,
+      grid_lon: req.location.type === "point" ? Math.round(lon * 2) / 2 : null,
       region_name: req.region_name ?? null,
       source: "mock",
       from_cache: false,

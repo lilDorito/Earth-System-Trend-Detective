@@ -14,7 +14,7 @@ Plus a **global trend map** (`/map`): a spinning Earth with a per-cell temperatu
 
 ## Quick start
 
-One command for API + web (after `pip install -r requirements.txt`): `python scripts/dev.py` -> http://localhost:5173 (API on :5055). Ctrl+C stops both. Manual steps below.
+One command for API + web (after `pip install -r requirements.txt`): `python scripts/dev.py` -> http://localhost:5173 (API on :5055). Add `--live` for real data from the Hugging Face dataset instead of the mock. Ctrl+C stops both. Manual steps below.
 
 ```bash
 # API (Python 3.13)
@@ -33,18 +33,13 @@ The web app runs on its own: by default it uses synthetic data generated in the 
 
 Checks: `pytest` and `python scripts/run_smoke.py`.
 
-Real data for points: set `DATA_MODE=live` in `.env`. Air temperature and precipitation then come from the NASA POWER monthly API (no token, cached in `data/cache`); the other variables stay synthetic until their adapters exist.
+Real data: set `DATA_MODE=live` in `.env`. Air temperature, soil moisture, precipitation, sea surface temperature and sea level then come from the [Earth Trend Detective dataset](https://huggingface.co/datasets/lilDorito/earth-trend-data) on Hugging Face (public, no token), and the trend map offers all 31 gridded variables. NO₂ stays synthetic. `HF_DATASET_PATH=data/hf` reads a local copy instead of the Hub.
 
 Port 8000 busy (Windows `WinError 10013`)? `uvicorn app.api.main:app --port 8765` and `VITE_DATA_SOURCE=api VITE_API_TARGET=http://localhost:8765 npm run dev`.
 
-### Trend map data
+### Data
 
-Without data the map runs on a synthetic field (badge "demo data, not real"). For real MERRA-2 T2M:
-
-```bash
-pip install xarray netcdf4 dask
-python scripts/prepare_grid.py path/to/merra2   # monthly *.nc4 -> data/grid/annual.npz (full years only)
-```
+With `DATA_MODE=mock` the map runs on a synthetic field (badge "synthetic field"). Live data comes from the dataset, built by the scripts in `scripts/ingest/` (see its README): `nasa_grid.py`, `ocean.py` and `ncei.py` download the sources, `hf_dataset.py` converts them to Parquet (`data/hf`, about 1 GB) and checks the result, then `hf upload lilDorito/earth-trend-data data/hf . --repo-type dataset` publishes it. After an upload, set `HF_DATASET_REVISION` to the new commit.
 
 ## Structure
 
@@ -53,6 +48,7 @@ configs/              variables, regions, demos, region types (YAML, no code)
 src/
   contracts.py        THE shared data contract (Series, TrendResult, EventResult, VariableInfo)
   sources/            one adapter per provider -> same Series out
+    hf_grid.py        monthly series from the Hugging Face dataset (point: nearest cell with data, box or region: weighted mean)
     power.py          NASA POWER monthly point series via API (no token)
     giovanni.py       point time series        (data, first priority)
     harmony.py        area-averaged series     (data)
@@ -61,14 +57,16 @@ src/
   units.py            raw -> display units
   processing.py       monthly resample, climatology, anomalies (stats)
   stats.py            trend (OLS + Mann-Kendall/Hamed-Rao) + event (Welch, autocorrelation-adjusted)
+  dataset.py          the Hugging Face dataset: catalog, annual grids, point, box and region series (ranged Parquet reads)
   gridtrends.py       global grid: Mann-Kendall + Sen per cell, FDR, demo field (feeds /map)
   pipeline.py         fetch -> process -> analyze
 app/
-  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{meta,grid,global-mean,point}
+  api/                FastAPI: /api/health, /variables, /regions, /region-types, /demos, POST /analyze, /api/trendmap/{variables,meta,grid,frames,global-mean,region,point}
   web/                React + TS + Vite, R3F globe, ECharts, Tailwind, shadcn/ui, Zustand
     src/api/          typed client + in-browser mock with the same interface
     src/features/     globe (shared canvas), explorer (wizard + results), trendmap, charts
-scripts/              fetch_variables, prefetch_demos, run_smoke, prepare_grid, prepare_gistemp, dev
+scripts/              dev, run_smoke, prepare_grid, prepare_gistemp
+  ingest/             source downloads (NASA grids, ocean grids, NCEI stations) and the Hugging Face dataset build
 data/                 cache/ + raw/ (ignored), demos/ (committed, offline demo data)
 tests/                contract + API tests
 docs/                 ARCHITECTURE.md, TEAM.md, AI_DISCLOSURE.md

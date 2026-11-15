@@ -2,21 +2,21 @@
 
 variables:
   - key: air_temperature
-    variable_id: T2M # NASA POWER monthly (MERRA-2 based), 2 m air temperature
-    source: nasa_power
+    variable_id: merra2_t2m # dataset key (Hugging Face), MERRA-2 2 m air temperature on a 1 degree grid
+    source: hf_grid
     name: Air temperature (2 m)
     short_definition: How warm the air is about two meters above the ground, the temperature you feel outside.
     units_raw: °C
     units: °C
     conversion: identity
     resolution: monthly
-    coverage_start: 1981-01-01
+    coverage_start: 2000-01-01
     land_only: false
     region_tags: [city, farmland, mountains, coast, desert, forest]
 
   - key: soil_moisture
-    variable_id: TODO_VERIFY_GLDAS_NOAH025_M_2_1_SoilMoi0_10cm_inst # GLDAS monthly, top 10 cm
-    source: mock
+    variable_id: gldas_soilmoist_0_10 # GLDAS Noah, top 10 cm
+    source: hf_grid
     name: Soil moisture (top 10 cm)
     short_definition: How much water is held in the top layer of soil, which plants and crops depend on.
     units_raw: kg m-2
@@ -28,15 +28,15 @@ variables:
     region_tags: [farmland, forest, desert]
 
   - key: precipitation
-    variable_id: PRECTOTCORR # NASA POWER monthly, corrected precipitation (monthly mean rate)
-    source: nasa_power
+    variable_id: imerg_precip # GPM IMERG Final, land and ocean, ends 2025-09
+    source: hf_grid
     name: Precipitation
     short_definition: The total amount of rain and snow that falls, measured as the depth of water it would make.
-    units_raw: mm/day
+    units_raw: mm/month
     units: mm/month
-    conversion: mm_day_to_mm_month
+    conversion: identity
     resolution: monthly
-    coverage_start: 1981-01-01
+    coverage_start: 2000-01-01
     land_only: false
     region_tags: [farmland, forest, mountains, coast, desert]
 
@@ -52,3 +52,29 @@ variables:
     coverage_start: 2004-10-01
     land_only: false
     region_tags: [city]
+
+  - key: sea_surface_temperature
+    variable_id: sst # NOAA OISST v2.1
+    source: hf_grid
+    name: Sea surface temperature
+    short_definition: How warm the top layer of the ocean is; it steers weather, storms and marine life.
+    units_raw: °C
+    units: °C
+    conversion: identity
+    resolution: monthly
+    coverage_start: 2000-01-01
+    land_only: false
+    region_tags: [coast]
+
+  - key: sea_level
+    variable_id: sla # CMEMS DUACS sea level anomaly, shown in mm
+    source: hf_grid
+    name: Sea level
+    short_definition: How high the sea stands compared with its long-term average, rising as oceans warm and ice melts.
+    units_raw: mm
+    units: mm
+    conversion: identity
+    resolution: monthly
+    coverage_start: 2000-01-01
+    land_only: false
+    region_tags: [coast]

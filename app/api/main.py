@@ -3,10 +3,11 @@
 import math
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
-from src import catalog, pipeline
+from src import catalog, dataset, pipeline
 from src.config import settings
 from src.sources.base import SourceError
 
@@ -23,6 +24,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(trendmap_router)
 
 
@@ -39,6 +41,24 @@ def variables():
 @app.get("/api/regions")
 def regions():
     return catalog.regions()
+
+
+@app.get("/api/boundaries")
+def boundaries(q: str = "", country: str | None = None, kind: str | None = None, limit: int = Query(50, ge=1, le=5000)):
+    # Natural Earth countries and admin-1 regions, usable as {"type": "region", "id": ...}
+    try:
+        frame = dataset.regions()
+    except dataset.DatasetError as e:
+        raise HTTPException(503, str(e))
+    if q:
+        frame = frame[frame["name"].str.contains(q, case=False, regex=False)]
+    if country:
+        frame = frame[frame["country"] == country.lower()]
+    if kind:
+        frame = frame[frame["kind"] == kind]
+    # countries first, then bigger regions
+    frame = frame.sort_values(["kind", "area_km2"], ascending=[False, False]).head(limit)
+    return frame.to_dict("records")
 
 
 @app.get("/api/region-types")

@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 import numpy as np
 import pandas as pd
 
-from ..contracts import Location, Point, Series, SeriesMeta, VariableInfo
+from ..contracts import BBox, Location, Point, Region, Series, SeriesMeta, VariableInfo
 
 # (base, seasonal amplitude, trend per decade, noise sd)
 PROFILES = {
@@ -14,6 +14,8 @@ PROFILES = {
     "soil_moisture": (25.0, 5.0, -0.8, 1.5),
     "precipitation": (50.0, 20.0, 1.0, 15.0),
     "no2_column": (3.0e15, 1.0e15, -2.0e14, 4.0e14),
+    "sea_surface_temperature": (18.0, 4.0, 0.2, 0.4),
+    "sea_level": (0.0, 40.0, 35.0, 25.0),
 }
 DEFAULT_PROFILE = (10.0, 3.0, 0.2, 1.0)
 
@@ -23,7 +25,8 @@ class MockSource:
 
     def fetch(self, variable: VariableInfo, location: Location, start: date, end: date) -> Series:
         lat, lon = _center(location)
-        seed = int(hashlib.sha1(f"{variable.key}|{lat:.2f}|{lon:.2f}".encode()).hexdigest()[:8], 16)
+        place = location.id if isinstance(location, Region) else f"{lat:.2f}|{lon:.2f}"
+        seed = int(hashlib.sha1(f"{variable.key}|{place}".encode()).hexdigest()[:8], 16)
         rng = np.random.default_rng(seed)
         base, amp, trend, noise = PROFILES.get(variable.key, DEFAULT_PROFILE)
 
@@ -57,4 +60,7 @@ class MockSource:
 def _center(location: Location) -> tuple[float, float]:
     if isinstance(location, Point):
         return location.lat, location.lon
-    return (location.south + location.north) / 2, (location.west + location.east) / 2
+    if isinstance(location, BBox):
+        return location.center
+    # a region has no geometry offline; any mid-latitude place gives a plausible series
+    return 45.0, 0.0

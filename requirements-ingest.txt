@@ -5,6 +5,7 @@ requests
 xarray
 netCDF4
 pyproj
+shapely
 earthaccess
 copernicusmarine
 h5py

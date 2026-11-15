@@ -12,6 +12,7 @@ numpy>=2.0
 scipy>=1.14
 pymannkendall>=1.4.3
 pyarrow>=17.0
+huggingface_hub>=0.30 # reads the dataset on the Hub (src/dataset.py)
 
 # optional: scripts/prepare_grid.py (NetCDF -> annual grid)
 # xarray>=2024.10

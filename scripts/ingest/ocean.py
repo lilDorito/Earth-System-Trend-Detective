@@ -1,3 +1,7 @@
+# monthly 1x1 degree ocean grids, 2000-2025, from public sources: one year file per variable, then merged
+#
+#   python scripts/ingest/ocean.py list | run [--part N | --source a,b] [--workers 8] | merge
+
 import argparse
 import os
 import warnings
@@ -52,6 +56,7 @@ SOURCE_VARS = {
     "oceansoda": ["ph", "pco2"],
     "oscar": ["u_current", "v_current"],
 }
+# sources split between people, roughly equal in download time
 PARTS = {0: ["oisst", "sealevel", "grace"], 1: ["en4"], 2: ["chl", "seaice", "oceansoda"], 3: ["oscar"]}
 
 
@@ -73,6 +78,7 @@ class AuthError(Exception):
     pass
 
 
+# libraries report rejected credentials in different ways; those failures must not be retried
 def is_auth_error(e):
     t = f"{type(e).__name__} {e}".lower()
     return any(
@@ -107,6 +113,7 @@ def ea_login():
 UA = {"User-Agent": "Mozilla/5.0 (ocean_download; student project)"}
 
 
+# resumable download (HTTP Range on the .part file): True when saved, False on failure, None on 404
 def fetch(url, dest, headers=None, retries=4, timeout=120, quiet404=False):
     dest = Path(dest)
     if dest.exists() and dest.stat().st_size > 0:
@@ -181,6 +188,7 @@ def pick_var(ds, names):
     raise KeyError(f"None of the variables {names} found; the file has: {list(ds.variables)}")
 
 
+# mean of the source points that fall in each 1-degree cell; lat/lon may be 1-D axes or 2-D (projected grids)
 def regrid(vals, lat, lon):
     lat = np.asarray(lat)
     lon = np.asarray(lon)
@@ -237,12 +245,6 @@ def save_series(var, series):
     for y, d in by_year.items():
         save_year(var, y, d)
     log(f"  saved {var}: years {min(by_year) if by_year else '-'}..{max(by_year) if by_year else '-'}")
-
-
-def ym_iter(y0=Y0, y1=Y1):
-    for y in range(y0, y1 + 1):
-        for m in range(1, 13):
-            yield y, m
 
 
 OISST_URLS = [
@@ -376,7 +378,7 @@ def proc_grace(path):
 
 
 def run_grace(a):
-    if year_done(["ocean_mass"], 2024):
+    if year_done(["ocean_mass"], Y1):
         log("grace: done")
         return True
     f = list((RAW / "grace").glob("*.nc"))
@@ -397,9 +399,10 @@ def run_grace(a):
 
 
 EN4_LIST = "https://hadleyserver.metoffice.gov.uk/en4/EN.4.2.2.analyses.g10.download-list.txt"
-RHO, CP = 1025.0, 3985.0
+RHO, CP = 1025.0, 3985.0  # seawater density (kg/m3) and specific heat (J/kg/K) for heat content
 
 
+# thickness of each depth level that lies within 0..h metres
 def layer_weights(depth, h):
     d = np.asarray(depth, dtype="float64")
     edges = np.concatenate([[0.0], (d[:-1] + d[1:]) / 2, [d[-1] + (d[-1] - d[-2]) / 2]])
@@ -419,6 +422,7 @@ def proc_en4_month(path):
         w = layer_weights(depth, h)
         use = w > 0
         wv = w[use][:, None, None]
+        # only full water columns: a shelf sea shallower than h has no heat content for that layer
         ok = np.all(np.isfinite(T[use]), axis=0)
         heat = RHO * CP * np.nansum(T[use] * wv, axis=0)
         heat = np.where(ok, heat, np.nan)
@@ -490,6 +494,7 @@ def chl_name(y, m):
     return f"AQUA_MODIS.{y}{m:02d}01_{y}{m:02d}{last:02d}.L3m.MO.CHL.chlor_a.9km.nc"
 
 
+# geometric mean: chlorophyll is log-normally distributed
 def proc_chl(path):
     ds = xr.open_dataset(path)
     v = ds[pick_var(ds, ["chlor_a"])].values.astype("float64")
@@ -537,7 +542,6 @@ def run_chl(a):
     return allok
 
 
-SI_BASE = "https://polarwatch.noaa.gov/erddap/files/nsidcG02202v4{h}mday/"
 SI_CRS = {"nh": "EPSG:3411", "sh": "EPSG:3412"}
 
 
@@ -562,6 +566,7 @@ SI_HOSTS = [
 ]
 
 
+# the satellite in the file name changes over the years; without a directory listing, try the likely ones
 def seaice_names(y, m, h, listing):
     if (y, m, h) in listing:
         return [listing[(y, m, h)]]
@@ -697,6 +702,7 @@ def oceansoda_urls():
 
 
 def run_oceansoda(a):
+    # 2022 is the last year every OceanSODA release covers
     if year_done(["ph", "pco2"], 2022):
         log("oceansoda: done")
         return True
@@ -880,6 +886,7 @@ def cmd_list(a):
         log(f"  part {p}: {', '.join(srcs)}")
 
 
+# credentials and packages each source needs, checked before anything is downloaded
 NEEDS = {
     "oisst": ([], []),
     "en4": ([], []),

@@ -2,17 +2,19 @@
 
 import type { EChartsOption, LineSeriesOption } from "echarts";
 import Chart, { baseOption, palette, valueAxis } from "@/features/charts/Chart";
+import { formatNumber } from "@/lib/format";
 
 type TrendChartProps = {
   years: number[];
   values: (number | null)[];
   fitted?: (number | null)[];
   rolling?: (number | null)[];
+  units?: string;
   height?: number;
   compact?: boolean;
 };
 
-export default function TrendChart({ years, values, fitted, rolling, height = 220, compact = false }: TrendChartProps) {
+export default function TrendChart({ years, values, fitted, rolling, units = "", height = 220, compact = false }: TrendChartProps) {
   const series: LineSeriesOption[] = [
     {
       name: "Annual mean",
@@ -51,7 +53,7 @@ export default function TrendChart({ years, values, fitted, rolling, height = 22
     ...baseOption,
     tooltip: {
       ...(baseOption.tooltip as object),
-      valueFormatter: (v) => (typeof v === "number" ? `${v.toFixed(2)} °C` : "–"),
+      valueFormatter: (v) => (typeof v === "number" ? `${formatNumber(v)} ${units}` : "–"),
     },
     legend: compact
       ? undefined

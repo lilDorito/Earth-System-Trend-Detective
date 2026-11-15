@@ -1,6 +1,7 @@
 // step 2: variable picker
 
 import { useShallow } from "zustand/react/shallow";
+import { Dropdown } from "@/components/ui/dropdown";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/useAppStore";
@@ -26,18 +27,17 @@ export default function VariableStep() {
   const typePicker = (
     <label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
       suggest for
-      <select
+      <Dropdown
+        variant="inline"
+        align="right"
         value={regionType ?? ""}
-        onChange={(e) => setRegionType(e.target.value || null)}
-        className="field-sizing-content cursor-pointer appearance-none border-b border-dashed border-foreground/30 bg-transparent text-foreground hover:border-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <option value="">any place</option>
-        {Object.entries(regionTypes).map(([key, type]) => (
-          <option key={key} value={key}>
-            {type.label.toLowerCase()}
-          </option>
-        ))}
-      </select>
+        onChange={(value) => setRegionType(value || null)}
+        items={[
+          { value: "", label: "any place" },
+          ...Object.entries(regionTypes).map(([key, type]) => ({ value: key, label: type.label.toLowerCase() })),
+        ]}
+        aria-label="Suggest variables for"
+      />
     </label>
   );
 

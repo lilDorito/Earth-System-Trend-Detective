@@ -1,59 +1,90 @@
 // grid field preparation for globe layers: smoothing and upsampling into a half-float texture
 
-import { ClampToEdgeWrapping, DataTexture, DataUtils, HalfFloatType, LinearFilter, RGFormat, RepeatWrapping } from "three";
+import { ClampToEdgeWrapping, DataTexture, DataUtils, HalfFloatType, LinearFilter, RGBAFormat, RepeatWrapping } from "three";
+import type { GridGeometry } from "@/api/types";
 
-export const UPSAMPLE = 4;
+export type Smoothed = { values: Float32Array; coverage: Float32Array };
 
-// light blur (wraps in longitude), then each polar row is pulled toward its mean so the poles meet in one value
-export function smoothField(values: ArrayLike<number | null>, nlat: number, nlon: number): Float32Array {
-  let cur = Float32Array.from(values as ArrayLike<number>, (v) => v ?? 0);
-  const dlat = 180 / (nlat - 1);
-  const passes = Math.max(2, Math.ceil(2.5 / dlat));
-  for (let p = 0; p < passes; p++) {
-    const next = new Float32Array(cur.length);
-    for (let i = 0; i < nlat; i++) {
-      const up = Math.min(nlat - 1, i + 1) * nlon;
-      const down = Math.max(0, i - 1) * nlon;
-      const row = i * nlon;
-      for (let j = 0; j < nlon; j++) {
-        const l = (j + nlon - 1) % nlon;
-        const r = (j + 1) % nlon;
-        next[row + j] =
-          (4 * cur[row + j] +
-            2 * (cur[row + l] + cur[row + r] + cur[down + j] + cur[up + j]) +
-            cur[down + l] + cur[down + r] + cur[up + l] + cur[up + r]) / 16;
-      }
-    }
-    cur = next;
-  }
+function blur(src: Float32Array, nlat: number, nlon: number) {
+  const out = new Float32Array(src.length);
   for (let i = 0; i < nlat; i++) {
-    const lat = Math.abs(-90 + i * dlat);
-    if (lat < 60) continue;
-    const w = Math.min(1, ((lat - 60) / 28) ** 1.5);
+    const up = Math.min(nlat - 1, i + 1) * nlon;
+    const down = Math.max(0, i - 1) * nlon;
     const row = i * nlon;
-    let mean = 0;
-    for (let j = 0; j < nlon; j++) mean += cur[row + j];
-    mean /= nlon;
-    for (let j = 0; j < nlon; j++) cur[row + j] += (mean - cur[row + j]) * w;
+    for (let j = 0; j < nlon; j++) {
+      const l = (j + nlon - 1) % nlon;
+      const r = (j + 1) % nlon;
+      out[row + j] =
+        (4 * src[row + j] +
+          2 * (src[row + l] + src[row + r] + src[down + j] + src[up + j]) +
+          src[down + l] + src[down + r] + src[up + l] + src[up + r]) / 16;
+    }
   }
-  return cur;
+  return out;
+}
+
+// light blur that ignores cells without data (wraps in longitude), then each polar row is pulled toward
+// its mean so the poles meet in one value
+export function smoothField(values: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry): Smoothed {
+  const coverage = Float32Array.from(values as ArrayLike<number | null>, (v) => (v == null ? 0 : 1));
+  let weighted = Float32Array.from(values as ArrayLike<number | null>, (v) => v ?? 0);
+  let weight = coverage;
+  for (let p = 0; p < Math.max(2, Math.ceil(2.5 / grid.dlat)); p++) {
+    weighted = blur(weighted, nlat, nlon);
+    weight = blur(weight, nlat, nlon);
+  }
+  const smooth = weighted.map((v, k) => (weight[k] > 1e-6 ? v / weight[k] : 0));
+  // poleward from 60 degrees in each hemisphere; a row without data (a satellite pole hole) takes the
+  // mean of the last row with data, so values cannot fan out by longitude around the pole
+  const rows = Array.from({ length: nlat }, (_, i) => i);
+  for (const order of [rows.filter((i) => grid.lat0 + i * grid.dlat >= 0), rows.filter((i) => grid.lat0 + i * grid.dlat < 0).reverse()]) {
+    let last: number | null = null;
+    for (const i of order) {
+      const lat = Math.abs(grid.lat0 + i * grid.dlat);
+      const row = i * nlon;
+      let sum = 0;
+      let count = 0;
+      for (let j = 0; j < nlon; j++) {
+        if (!coverage[row + j]) continue;
+        sum += smooth[row + j];
+        count++;
+      }
+      const mean: number | null = count ? sum / count : last;
+      if (count) last = mean;
+      if (lat < 60 || mean == null) continue;
+      const w = count ? Math.min(1, ((lat - 60) / 28) ** 1.5) : 1;
+      for (let j = 0; j < nlon; j++) smooth[row + j] += (mean - smooth[row + j]) * w;
+    }
+  }
+  // near the poles a row's coverage is its mean: a partly covered polar row would otherwise cut
+  // wedges into the field, all meeting at the pole
+  const shown = Float32Array.from(coverage);
+  for (let i = 0; i < nlat; i++) {
+    if (Math.abs(grid.lat0 + i * grid.dlat) < 80) continue;
+    const row = shown.subarray(i * nlon, (i + 1) * nlon);
+    row.fill(row.reduce((a, b) => a + b, 0) / nlon >= 0.5 ? 1 : 0);
+  }
+  return { values: smooth, coverage: shown };
 }
 
 // cubic B-spline weights for each sub-step, so contours stay smooth after linear filtering of the dense grid
-const WEIGHTS = Array.from({ length: UPSAMPLE }, (_, k) => {
-  const t = k / UPSAMPLE;
-  return [(1 - t) ** 3 / 6, (3 * t ** 3 - 6 * t ** 2 + 4) / 6, (-3 * t ** 3 + 3 * t ** 2 + 3 * t + 1) / 6, t ** 3 / 6];
-});
+function weightsFor(factor: number) {
+  return Array.from({ length: factor }, (_, k) => {
+    const t = k / factor;
+    return [(1 - t) ** 3 / 6, (3 * t ** 3 - 6 * t ** 2 + 4) / 6, (-3 * t ** 3 + 3 * t ** 2 + 3 * t + 1) / 6, t ** 3 / 6];
+  });
+}
 
-// rows: n -> (n - 1) * UPSAMPLE + 1, clamped at the poles; columns: n -> n * UPSAMPLE, wrapped
-function upsample(src: Float32Array, nlat: number, nlon: number) {
-  const width = nlon * UPSAMPLE;
-  const height = (nlat - 1) * UPSAMPLE + 1;
+// rows: n -> (n - 1) * factor + 1, clamped at the poles; columns: n -> n * factor, wrapped
+function upsample(src: Float32Array, nlat: number, nlon: number, factor: number) {
+  const weights = weightsFor(factor);
+  const width = nlon * factor;
+  const height = (nlat - 1) * factor + 1;
   const rows = new Float32Array(nlat * width);
   for (let i = 0; i < nlat; i++) {
     for (let x = 0; x < width; x++) {
-      const j = Math.floor(x / UPSAMPLE);
-      const w = WEIGHTS[x % UPSAMPLE];
+      const j = Math.floor(x / factor);
+      const w = weights[x % factor];
       let sum = 0;
       for (let d = 0; d < 4; d++) sum += w[d] * src[i * nlon + ((j + d - 1 + nlon) % nlon)];
       rows[i * width + x] = sum;
@@ -61,8 +92,8 @@ function upsample(src: Float32Array, nlat: number, nlon: number) {
   }
   const out = new Float32Array(height * width);
   for (let y = 0; y < height; y++) {
-    const i = Math.floor(y / UPSAMPLE);
-    const w = WEIGHTS[y % UPSAMPLE];
+    const i = Math.floor(y / factor);
+    const w = weights[y % factor];
     for (let d = 0; d < 4; d++) {
       const r = Math.min(nlat - 1, Math.max(0, i + d - 1)) * width;
       const wd = w[d];
@@ -72,16 +103,35 @@ function upsample(src: Float32Array, nlat: number, nlon: number) {
   return { out, width, height };
 }
 
-// interleaved pairs: field value, then mask (1 = shown in full, 0 = muted)
-export function fieldGrid(field: Float32Array, mask: ArrayLike<number> | null, nlat: number, nlon: number) {
-  const { out: values, width, height } = upsample(field, nlat, nlon);
-  const shown = mask ? upsample(Float32Array.from(mask), nlat, nlon).out : null;
-  const data = new Float32Array(width * height * 2);
+// texels: value, mask (1 shown in full, 0 muted), coverage (1 data, 0 none), significance (1 stippled)
+export function fieldGrid(
+  smoothed: Smoothed,
+  mask: ArrayLike<number> | null,
+  sig: ArrayLike<number> | null,
+  nlat: number,
+  nlon: number,
+  grid: GridGeometry,
+) {
+  // about 720 texels around the globe: enough for smooth contours, small enough to rebuild per year
+  const factor = Math.min(4, Math.max(2, Math.round(720 / nlon)));
+  const { out: values, width, height } = upsample(smoothed.values, nlat, nlon, factor);
+  const coverage = upsample(smoothed.coverage, nlat, nlon, factor).out;
+  const shown = mask ? upsample(Float32Array.from(mask), nlat, nlon, factor).out : null;
+  const stippled = sig ? upsample(Float32Array.from(sig), nlat, nlon, factor).out : null;
+  const data = new Float32Array(width * height * 4);
   for (let k = 0; k < values.length; k++) {
-    data[2 * k] = values[k];
-    data[2 * k + 1] = shown ? shown[k] : 1;
+    data[4 * k] = values[k];
+    data[4 * k + 1] = shown ? shown[k] : 1;
+    data[4 * k + 2] = coverage[k];
+    data[4 * k + 3] = stippled ? stippled[k] : 0;
   }
-  return { data, width, height };
+  return {
+    data,
+    width,
+    height,
+    origin: [grid.lon0, grid.lat0] as const,
+    step: [grid.dlon / factor, grid.dlat / factor] as const,
+  };
 }
 
 export type FieldGrid = ReturnType<typeof fieldGrid>;
@@ -93,7 +143,7 @@ function toHalf(data: Float32Array) {
 }
 
 export function createFieldTexture({ data, width, height }: FieldGrid) {
-  const texture = new DataTexture(toHalf(data), width, height, RGFormat, HalfFloatType);
+  const texture = new DataTexture(toHalf(data), width, height, RGBAFormat, HalfFloatType);
   texture.magFilter = texture.minFilter = LinearFilter;
   texture.wrapS = RepeatWrapping;
   texture.wrapT = ClampToEdgeWrapping;

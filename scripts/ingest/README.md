@@ -80,7 +80,7 @@ The three `run` commands can be started in separate terminals (one per product).
 
 Output in `data/nasa_grid/`:
 
-- `parts/<variable>/YYYY-MM.csv` (`lat,lon,value`) and `parts/<variable>/valid_frac.csv`: intermediate monthly slices.
+- `parts/<variable>/YYYY-MM.csv` (`lat,lon,value,valid_frac`): intermediate monthly slices. Slices from before valid_frac was stored per month use the shared `parts/<variable>/valid_frac.csv` instead.
 - `processed/<variable>.csv` (`date,lat,lon,value,valid_frac`): long format, `date` is the first day of the month, `lat`/`lon` are cell centers (integer + 0.5). Cells without data are omitted, there are no NaN rows. All 20 files take about 7 GB.
 
 Regridding: each source cell goes to the 1 degree cell that contains its center and cells are averaged with weight `cos(latitude)`. `valid_frac` is the share of the cell's area covered by valid source data; cells below 0.5 are dropped. Units are converted to `mm/month` (precipitation, evapotranspiration), `degC` (temperatures) or kept as in the source (see `list`).
@@ -93,3 +93,23 @@ Known data caveats:
 - The MERRA-2 grid (0.5 x 0.625 deg) does not nest in 1 degree cells, so assigning by cell center shifts the averaging by up to about 0.25 deg. GLDAS and IMERG nest exactly.
 - GLDAS has no data south of 60S, and its variables do not share one land mask: 15,332 cells for `gldas_tair`, `gldas_precip`, `gldas_swdown`, `gldas_wind` against 15,180 for the others. Use the common mask when comparing GLDAS variables.
 - Open, not yet explained: several GLDAS series (root-zone moisture, potential evaporation, shortwave radiation, wind) show a step around 2010-2011, which looks like a change in model inputs rather than climate. The land-mean air-temperature trend of GLDAS (about +0.6 degC/decade) is roughly twice that of MERRA-2 (about +0.26 degC/decade) although their annual anomalies correlate (r about 0.7). `gldas_swe` and `gldas_snowdepth` take non-physical values over ice sheets (Greenland). Check these before interpreting trends of those variables.
+
+## Hugging Face dataset (`hf_dataset.py`)
+
+Converts the outputs above into the dataset the app reads, in `data/hf/` (about 1 GB instead of 7.4 GB):
+
+```
+python scripts/ingest/hf_dataset.py build                # all grids, stations, catalog and dataset card
+python scripts/ingest/hf_dataset.py build sst merra2_t2m  # rebuild a few variables, the catalog keeps the rest
+python scripts/ingest/hf_dataset.py verify               # compare every grid with its source
+python scripts/ingest/regions.py                         # region cell weights (Natural Earth)
+hf upload lilDorito/earth-trend-data data/hf . --repo-type dataset
+```
+
+It reads the NASA CSVs from `data/nasa_grid/processed/` or `data/nasa_grid/`, the ocean NetCDFs from `data/ocean/processed/` and the station files from `data/ncei/processed/`. Grids become `grid/<variable>.parquet` (one schema for all: `date, lat, lon, value, valid_frac`, sorted by cell, one row group per latitude band, so reading one point costs about 0.3 MB) and `annual/<variable>.parquet` (annual means per cell for trend maps). `catalog.parquet` holds units, period, coverage, licence and a robust value range (`p02`, `p98`) per variable. The dataset repo is set by `HF_DATASET`.
+
+## Region weights (`regions.py`)
+
+Downloads Natural Earth 1:10m countries (Ukraine's point-of-view edition, so Crimea is part of Ukraine) and admin-1 regions into `data/raw/natural_earth/`, and writes `data/hf/regions/index.parquet` (id, name, kind, country, bounds, label point, area) and `regions/weights.parquet` (`id, lat, lon, frac`: share of each 1 degree cell inside the region). Shares below 1e-4 of a cell are dropped, except for regions smaller than that, which keep their biggest cell. Ids are lowercase `ADM0_A3` for countries (`ukr`) and `adm1_code` for admin-1 regions (`ukr-321`). Bounds use west > east for regions across 180 degrees. Unnamed admin-1 slivers (placeholder codes) are skipped. Needs `shapely`; takes about 10 s.
+
+It also writes the frontend's copy to `app/web/public/regions/` (commit it, Vercel serves it): `index.json` for search and `outlines/<country>.json` with each country's and its regions' outlines, simplified to 0.02 degrees (about 5 MB in total, Ukraine 9 KB gzipped).

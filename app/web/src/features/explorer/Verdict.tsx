@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Status } from "@/components/ui/status";
 import { formatMonth, formatNumber, formatP, formatSigned } from "@/lib/format";
 
+// below this share of the area with data, the result describes only part of the place
+const COVERAGE_WARNING = 0.9;
+
 function headline(result: AnalysisResult) {
   if (result.mode === "trend") return { value: formatSigned(result.slope_per_decade), unit: `${result.units} / decade` };
   if (result.pct_change !== null) return { value: `${formatSigned(result.pct_change, 0)}%`, unit: "after the event" };
@@ -33,7 +36,7 @@ function figures(result: AnalysisResult): [string, string][] {
 }
 
 export default function Verdict({ response }: { response: AnalyzeResponse }) {
-  const { result, series } = response;
+  const { result, series, meta } = response;
   const { value, unit } = headline(result);
 
   return (
@@ -65,9 +68,17 @@ export default function Verdict({ response }: { response: AnalyzeResponse }) {
         ))}
       </dl>
 
+      {meta.coverage != null && meta.coverage < COVERAGE_WARNING && (
+        <p className="mt-4 text-xs leading-relaxed text-warning">
+          Only {Math.round(meta.coverage * 100)}% of this area has {meta.variable_name.toLowerCase()} data; the
+          average covers that part only.
+        </p>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           {series.length} months, {formatMonth(series[0].time)} to {formatMonth(series[series.length - 1].time)}
+          {meta.cells != null && `, ${meta.cells} grid ${meta.cells === 1 ? "cell" : "cells"}`}
         </span>
         <Link to="/learn#significance" className="underline-offset-2 hover:text-foreground hover:underline">
           What does significant mean?

@@ -1,3 +1,5 @@
+# shared by the ingest scripts: project root and .env loading (environment variables win)
+
 import os
 from pathlib import Path
 

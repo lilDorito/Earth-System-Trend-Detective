@@ -49,7 +49,6 @@ const NAMES_SHOWN = 3;
 // a country and its own regions overlap, so only one of the two kinds stays
 const overlaps = (a: Boundary, b: Boundary) => a.country === b.country && a.kind !== b.kind;
 
-// what the selection stands for: nothing, one region, or several as one area
 function selection(list: Boundary[]) {
   if (list.length === 0) return { location: null, regionName: null, boundary: null, boundaries: list };
   if (list.length === 1) return { location: { type: "region" as const, id: list[0].id }, regionName: boundaryLabel(list[0]), boundary: list[0], boundaries: list };

@@ -35,7 +35,6 @@ export type RegionTarget =
   | { kind: "boundary"; boundary: Boundary }
   | { kind: "box"; box: BBox; name?: string };
 
-// what the globe outlines for a target; live data uses Ukraine's border instead of its box
 export function targetArea(target: RegionTarget): Area {
   if (target.kind === "box") return { kind: "box", box: target.box };
   if (target.kind === "boundary") return { kind: "region", boundary: target.boundary };
@@ -46,8 +45,6 @@ export function targetArea(target: RegionTarget): Area {
   return { kind: "box", box: { south, north, west, east } };
 }
 
-// the place a region target names for the insight endpoints: a Natural Earth id where there is one, else its box
-// the name shown while a region loads
 export function targetLabel(target: RegionTarget): string {
   if (target.kind === "boundary") return boundaryLabel(target.boundary);
   if (target.kind === "box") return target.name ?? "Custom area";
@@ -94,7 +91,6 @@ type TrendMapState = {
   picked: { lat: number; lon: number; name?: string } | null;
   selected: TrendPoint | null;
 
-  // process fingerprint shown instead of the variable, and the opposite-trend areas of the variable
   hotspot: Hotspots | null;
   hotspotLoading: string | null;
   divergence: Divergence | null;
@@ -197,7 +193,6 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
 
   async setVariable(variable) {
     const id = ++variableRequestId;
-    // opposite-trend areas belong to the variable they were found for
     set({ variable, loading: true, error: null, divergence: null, divergenceArea: null, hotspot: null, hotspotLoading: null });
     const values = get().display === "values";
     // the wind field is the same for every wind variable, so it is fetched once
@@ -212,7 +207,6 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
         wantWind ? api.trendWind().catch(() => null) : get().wind,
       ]);
       if (id !== variableRequestId) return;
-      // keep the year being looked at when the new variable covers it
       const year = frames.years.includes(get().frameYear) ? get().frameYear : frames.years[frames.years.length - 1];
       set({ meta, grid, globalMean, frames, valueFrames, wind, frameYear: year, loading: false });
     } catch (e) {
@@ -260,7 +254,6 @@ export const useTrendMapStore = create<TrendMapState>((set, get) => ({
       set({ regionTarget: null, region: null, regionError: null, regionLoading: false });
       return;
     }
-    // picked from the list: fly there; drawn boxes are already in view
     const previous = get().regionTarget;
     if (target.kind !== "box" && target !== previous) {
       const bounds = target.kind === "boundary" ? target.boundary : boxOf(REGIONS[target.name].bbox);

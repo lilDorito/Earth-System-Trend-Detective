@@ -25,7 +25,6 @@ export function toSegments(rings: Ring[]): Float32Array {
       if (Math.abs(lon0) > 179.99 && Math.abs(lon1) > 179.99 && lon0 * lon1 > 0) continue;
       // fat lines draw a zero-length segment as a spike in a random direction
       if (lon0 === lon1 && lat0 === lat1) continue;
-      // long edges follow the sphere instead of cutting through it
       const steps = Math.max(1, Math.ceil(Math.max(Math.abs(lon1 - lon0), Math.abs(lat1 - lat0)) / MAX_STEP_DEG));
       for (let k = 0; k < steps; k++) {
         push(lon0 + ((lon1 - lon0) * k) / steps, lat0 + ((lat1 - lat0) * k) / steps);

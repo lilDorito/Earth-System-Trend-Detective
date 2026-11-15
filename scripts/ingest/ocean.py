@@ -56,7 +56,6 @@ SOURCE_VARS = {
     "oceansoda": ["ph", "pco2"],
     "oscar": ["u_current", "v_current"],
 }
-# sources split between people, roughly equal in download time
 PARTS = {0: ["oisst", "sealevel", "grace"], 1: ["en4"], 2: ["chl", "seaice", "oceansoda"], 3: ["oscar"]}
 
 
@@ -188,7 +187,6 @@ def pick_var(ds, names):
     raise KeyError(f"None of the variables {names} found; the file has: {list(ds.variables)}")
 
 
-# mean of the source points that fall in each 1-degree cell; lat/lon may be 1-D axes or 2-D (projected grids)
 def regrid(vals, lat, lon):
     lat = np.asarray(lat)
     lon = np.asarray(lon)
@@ -402,7 +400,6 @@ EN4_LIST = "https://hadleyserver.metoffice.gov.uk/en4/EN.4.2.2.analyses.g10.down
 RHO, CP = 1025.0, 3985.0  # seawater density (kg/m3) and specific heat (J/kg/K) for heat content
 
 
-# thickness of each depth level that lies within 0..h metres
 def layer_weights(depth, h):
     d = np.asarray(depth, dtype="float64")
     edges = np.concatenate([[0.0], (d[:-1] + d[1:]) / 2, [d[-1] + (d[-1] - d[-2]) / 2]])
@@ -894,7 +891,6 @@ def cmd_list(a):
         log(f"  part {p}: {', '.join(srcs)}")
 
 
-# credentials and packages each source needs, checked before anything is downloaded
 NEEDS = {
     "oisst": ([], []),
     "en4": ([], []),

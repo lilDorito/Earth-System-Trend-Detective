@@ -22,11 +22,8 @@ const MARKER_DOT_CLASS = "absolute inset-0 rounded-full border-2 border-black bg
 
 const MIN_FACING = 0.3;
 
-// 1 while zoomed out, 0 once cities have taken over
 const countryFade = (distance: number) => Math.min(1, Math.max(0, (distance - 1.5) / 0.45));
-// smallest population shown at a given zoom
 const cityThreshold = (distance: number) => (distance > 2.4 ? Infinity : 8e6 * Math.min(1, (distance - 1) / 1.3) ** 3);
-// smallest country area (steradians) labelled at a given zoom
 const areaThreshold = (distance: number) => 0.004 * Math.max((distance - 1) / 1.9, 0) ** 2.5;
 
 type Chunk = { line: LineSegments2; center: Vector3; reach: number };
@@ -104,7 +101,6 @@ type Label = {
   transform?: string;
 };
 
-// touch the DOM only when something actually changed
 function hide(label: Label) {
   if (label.shown === false) return;
   label.shown = false;
@@ -134,7 +130,6 @@ function createLabel(text: string, className: string, dotClass?: string) {
 
 export type PickHandler = (lat: number, lon: number, name?: string) => void;
 
-// nearest city dot on screen to a click, so clicks just beside a dot still pick the city
 export type CitySnap = { current: ((x: number, y: number) => City | null) | null };
 
 const SNAP_PX = 8;
@@ -156,9 +151,7 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
   const projected = useMemo(() => new Vector3(), []);
   const view = useMemo(() => new Vector3(), []);
   const invalidate = useThree((s) => s.invalidate);
-  // camera matrix and screen size of the last layout; cleared whenever labels need a fresh pass
   const laidOut = useRef<number[] | null>(null);
-  // the selected point lives in this layer too, so city dots can never cover it
   const markerEl = useMemo(() => {
     const el = document.createElement("div");
     el.className = MARKER_CLASS;
@@ -243,7 +236,6 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
     };
   }, [countries, cities, container, canvas, onPick, onClear, invalidate, markerEl]);
 
-  // a picked city keeps its label on screen, and the marker takes the place of its dot
   useEffect(() => {
     const previous = pickedCity.current;
     if (previous) (previous.el.firstElementChild as HTMLElement).style.visibility = "";
@@ -254,7 +246,6 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
         )) ||
       null;
     if (pickedCity.current) (pickedCity.current.el.firstElementChild as HTMLElement).style.visibility = "hidden";
-    // restart the pulse for the new point
     const pulse = markerEl.firstElementChild!;
     pulse.replaceWith(pulse.cloneNode());
     laidOut.current = null;
@@ -288,7 +279,6 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
       projected.copy(label.position).project(camera);
       const x = ((projected.x + 1) / 2) * size.width;
       const y = ((1 - projected.y) / 2) * size.height;
-      // cities are anchored on their dot, countries on their centre
       const left = label.dot ? x - label.dot : x - label.width / 2;
       const box = [left - 3, y - 8, left + label.width + 3, y + 8];
       if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return hide(label);
@@ -341,7 +331,6 @@ function Labels({ countries, cities, container, onPick, onClear, marker, snap }:
       placeCities();
       placeCountries();
     }
-    // try again shortly for labels that could not be measured yet
     if (unmeasured) {
       laidOut.current = null;
       window.setTimeout(invalidate, 250);

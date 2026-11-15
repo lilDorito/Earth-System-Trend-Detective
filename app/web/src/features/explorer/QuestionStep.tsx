@@ -1,4 +1,4 @@
-// step 3: mode, period and seasons
+// mode, period and seasons
 
 import { useShallow } from "zustand/react/shallow";
 import type { Mode } from "@/api/types";
@@ -29,7 +29,7 @@ export default function QuestionStep() {
   );
 
   return (
-    <Section index={3} title="Question">
+    <Section title="Question">
       <div className="space-y-3">
         <Segmented value={s.mode} options={modes} onChange={s.setMode} className="flex w-full" />
 

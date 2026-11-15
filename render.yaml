@@ -16,7 +16,5 @@ services:
       # fewer malloc arenas: worker threads otherwise each keep their own heap (512 MB on the free plan)
       - key: MALLOC_ARENA_MAX
         value: "2"
-      - key: EARTHDATA_TOKEN
-        sync: false
       - key: CORS_ORIGINS
         sync: false

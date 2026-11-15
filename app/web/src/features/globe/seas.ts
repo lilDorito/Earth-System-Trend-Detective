@@ -1,6 +1,4 @@
-// seas and oceans (Natural Earth marine areas) for ocean-only variables, where picking a country makes
-// no sense. public/regions/seas.json lists them like boundaries; their outlines are in outlines/sea.json,
-// so they draw and fly like a country. The API reads the same files for the regional mean.
+// seas and oceans (Natural Earth marine areas), picked instead of countries for ocean variables
 
 import type { Boundary } from "@/api/types";
 import { loadOutline } from "./boundaries";
@@ -29,7 +27,6 @@ export function loadSeas(): Promise<Boundary[]> {
   return cached;
 }
 
-/** the sea or ocean at a point, null on land */
 export async function seaAt(lat: number, lon: number): Promise<Boundary | null> {
   for (const sea of await loadSeas()) {
     if (inside(await loadOutline(sea), lat, lon)) return sea;

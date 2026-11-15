@@ -1,16 +1,14 @@
 # global grid trends for the globe layer: Mann-Kendall + Sen's slope per cell, FDR across cells
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 from scipy.stats import norm
 
 from . import dataset
-from .config import ROOT, settings
+from .config import settings
 
 ALPHA = 0.05
-GRID_FILE = ROOT / "data" / "grid" / "annual.npz"
 CHUNK_CELLS = 5_000  # cells per block: the pairwise-slope stack is about 25 MB at 26 years
 DEMO_KEY = "merra2_t2m"
 
@@ -27,16 +25,7 @@ class GridDataset:
     units: str = "°C"
 
 
-def normalize(years, lat, lon, t2m):
-    # latitude ascending, longitude wrapped to -180..180 and ascending
-    lat_order = np.argsort(lat)
-    lon_wrapped = ((lon + 180.0) % 360.0) - 180.0
-    lon_order = np.argsort(lon_wrapped)
-    return years, lat[lat_order], lon_wrapped[lon_order], t2m[:, lat_order][:, :, lon_order]
-
-
 def make_demo() -> GridDataset:
-    # synthetic 2.5 degree field: regional trend patterns plus spatially correlated AR(1) noise
     from scipy.ndimage import gaussian_filter
 
     rng = np.random.default_rng(42)
@@ -68,8 +57,7 @@ def make_demo() -> GridDataset:
     return GridDataset(years, lat, lon, t2m.astype(np.float32), demo=True)
 
 
-def load_grid(key: str = DEMO_KEY, path: Path = GRID_FILE) -> GridDataset:
-    # live: the Hugging Face dataset; mock: a local annual.npz (scripts/prepare_grid.py) or the synthetic field
+def load_grid(key: str = DEMO_KEY) -> GridDataset:
     if settings.data_mode == "live":
         meta = dataset.variable(key)
         annual = dataset.annual(key)
@@ -77,11 +65,6 @@ def load_grid(key: str = DEMO_KEY, path: Path = GRID_FILE) -> GridDataset:
         return GridDataset(annual.years, dataset.LAT, dataset.LON, annual.values, False, key, label, meta["units"])
     if key != DEMO_KEY:
         raise KeyError(f"Only {DEMO_KEY} is available with DATA_MODE=mock")
-    if path.exists():
-        with np.load(path) as f:
-            years, lat, lon, values = normalize(f["years"], f["lat"], f["lon"], f["t2m"])
-            label = str(f["label"]) if "label" in f.files else "T2M, annual mean"
-        return GridDataset(years, lat, lon, values.astype(np.float32), demo=False, label=label)
     return make_demo()
 
 
@@ -96,7 +79,6 @@ def _mann_kendall_block(x: np.ndarray, t: np.ndarray):
             slopes.append(diff / (t[j] - t[i]))
     sen = np.median(np.stack(slopes), axis=0)
 
-    # lag-1 autocorrelation of residuals around the Sen line (positive part only)
     t = (t - t[0]).astype(np.float32).reshape(n, 1)
     resid = x - sen * t
     resid = resid - np.median(resid, axis=0)
@@ -128,7 +110,6 @@ def mann_kendall_grid(x: np.ndarray, years: np.ndarray | None = None):
 
 
 def fdr_bh(p: np.ndarray) -> np.ndarray:
-    # Benjamini-Hochberg q-values, NaN stays NaN
     flat = p.ravel()
     valid = np.isfinite(flat)
     q = np.full(flat.shape, np.nan)
@@ -145,11 +126,13 @@ def fdr_bh(p: np.ndarray) -> np.ndarray:
 
 def compute_grid(annual: np.ndarray, years: np.ndarray | None = None):
     sen, p = mann_kendall_grid(annual, years)
-    q = fdr_bh(p)
+    # a cell that never changes (open sea in an ice product, desert in a fire one) is not a test:
+    # counting it would dilute the correction for the cells that do vary
+    varies = np.ptp(annual, axis=0) > 0
+    q = fdr_bh(np.where(varies, p, np.nan))
     return sen * 10, p, q, np.isfinite(q) & (q < ALPHA)
 
 
-# area-weighted (cos latitude) mean per time step over the cells in mask (default: all), skipping NaN
 def selection_mean(values: np.ndarray, lat: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
     w = np.cos(np.deg2rad(lat))[:, None] * (np.ones(values.shape[1:]) if mask is None else mask)
     finite = np.isfinite(values) & (w > 0)

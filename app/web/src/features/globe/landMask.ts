@@ -1,6 +1,4 @@
-// high-resolution land mask (Natural Earth 1:50m), 1 on land and 0 at sea, in the same
-// longitude/latitude layout as the Earth texture; cuts ocean-only fields at the real coastline
-// instead of at the edge of their coarse grid cells
+// land mask (Natural Earth 1:50m) that cuts ocean and land fields at the real coastline
 
 import {
   ClampToEdgeWrapping,
@@ -20,7 +18,6 @@ const WIDTH = 4096;
 let cached: Promise<Texture> | null = null;
 
 function rasterise(): Promise<Uint8Array> {
-  // drawn in a worker, so the page does not freeze for the second it takes
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./landMask.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<Uint8Array>) => {

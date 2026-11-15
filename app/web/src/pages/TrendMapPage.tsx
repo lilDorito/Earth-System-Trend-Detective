@@ -87,7 +87,6 @@ export default function TrendMapPage() {
   const texture = useEarthTexture();
   const area = useMemo(() => (s.regionTarget ? targetArea(s.regionTarget) : null), [s.regionTarget]);
   const outline = useOutline(area);
-  // the opposite-trend area picked in the panel, and where every variable of a fingerprint matches
   const areaRings = useMemo(() => {
     const d = s.divergence;
     if (!d || s.divergenceArea == null) return null;
@@ -109,7 +108,6 @@ export default function TrendMapPage() {
   ];
   const co2Open = useCo2Store((st) => st.open);
   const stacked = !!(s.region || s.selected || s.station) || co2Open || notes.length > 0;
-  // the globe centres in what the panels leave: between the side panels on wide screens, above the sheet below that
   const sheet = useRef<HTMLDivElement>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
   useEffect(() => {
@@ -136,11 +134,9 @@ export default function TrendMapPage() {
         touchHint="Tap a cell to inspect it, pinch to zoom"
         detail={!s.showTrend}
         onPick={(lat, lon, city) => {
-          // one selection at a time: a new point replaces the open area
           void s.setRegion(null);
           void s.selectPoint(lat, lon, city);
         }}
-        // clears the picked cell first, then the region
         onClear={() => (s.picked || s.stationId ? s.clearSelection() : void s.setRegion(null))}
         onBox={(box) => {
           s.clearSelection();
@@ -149,7 +145,6 @@ export default function TrendMapPage() {
         onCountry={(lat, lon, zoomed) =>
           void areaAt(lat, lon, { zoomed, ocean: s.meta?.domain === "ocean" }).then((boundary) => {
             if (!boundary) return;
-            // one selection at a time: a new area replaces the open point
             s.clearSelection();
             void s.setRegion({ kind: "boundary", boundary });
           })
@@ -190,8 +185,6 @@ export default function TrendMapPage() {
         )}
       </GlobeCanvas>
       <ControlPanel />
-      {/* every selection panel in one stack: a column on the right on wide screens, a bottom sheet below that;
-          the most specific selection (cell or station) comes first */}
       {stacked && (
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex max-h-[62%] flex-col justify-end lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:max-h-none lg:w-[380px] lg:justify-start">
           <div ref={sheet} className="scrollbar-thin pointer-events-auto flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg">
@@ -210,7 +203,6 @@ export default function TrendMapPage() {
           </div>
         </div>
       )}
-      {/* narrow screens show one bottom sheet at a time: the timeline gives way to the selection */}
       {s.showTrend && !(narrow && stacked) && <TimelineBar rightInset={stacked ? 396 : 0} />}
     </div>
   );

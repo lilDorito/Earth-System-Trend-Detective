@@ -1,20 +1,12 @@
 # source registry: one adapter per provider, all return the same contracts.Series
 
 from .base import Source
-from .giovanni import GiovanniPointSource
-from .harmony import HarmonyAreaSource
 from .hf_grid import HfGridSource
 from .mock import MockSource
-from .power import PowerPointSource
 
 SOURCES: dict[str, Source] = {
     "mock": MockSource(),
-    "giovanni_point": GiovanniPointSource(),
-    "harmony_area": HarmonyAreaSource(),
-    "nasa_power": PowerPointSource(),
     "hf_grid": HfGridSource(),
-    # "firms": FirmsSource(),        # optional, war-impact demo
-    # "appeears": AppeearsSource(),  # optional, NDVI / night lights
 }
 
 

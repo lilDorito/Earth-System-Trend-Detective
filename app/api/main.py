@@ -50,7 +50,6 @@ def regions():
 
 @app.get("/api/boundaries")
 def boundaries(q: str = "", country: str | None = None, kind: str | None = None, limit: int = Query(50, ge=1, le=5000)):
-    # Natural Earth countries and admin-1 regions, usable as {"type": "region", "id": ...}
     try:
         frame = dataset.regions()
     except dataset.DatasetError as e:
@@ -61,7 +60,6 @@ def boundaries(q: str = "", country: str | None = None, kind: str | None = None,
         frame = frame[frame["country"] == country.lower()]
     if kind:
         frame = frame[frame["kind"] == kind]
-    # countries first, then bigger regions
     frame = frame.sort_values(["kind", "area_km2"], ascending=[False, False]).head(limit)
     return frame.to_dict("records")
 

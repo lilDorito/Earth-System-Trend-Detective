@@ -87,7 +87,6 @@ def build_region(rid: str, geom, row: dict) -> tuple[dict, list[tuple]]:
     return meta, [(rid, lat, lon, f) for lat, lon, f in cells]
 
 
-# rings as flat [lon, lat, lon, lat, ...] lists, simplified and rounded for the web
 def outline(geom) -> list[list[float]]:
     rings = []
     for part in getattr(geom, "geoms", [geom]):
@@ -101,10 +100,8 @@ def outline(geom) -> list[list[float]]:
     return rings
 
 
-# search index and one outline file per country, read by the frontend without the API
 def write_web(frame: pd.DataFrame, shapes: dict[str, object]) -> None:
     (WEB / "outlines").mkdir(parents=True, exist_ok=True)
-    # name_uk: Ukrainian name, so the search also finds "Україна" or "Київська область"
     columns = ["id", "name", "kind", "country", "type", "lat", "lon", "south", "north", "west", "east", "area_km2", "name_uk"]
     rows = frame[columns].assign(kind=frame["kind"].map({"country": "c", "admin1": "a"}))
     rows[["lat", "lon", "south", "north", "west", "east"]] = rows[["lat", "lon", "south", "north", "west", "east"]].round(3)
@@ -173,7 +170,6 @@ def build() -> None:
     write_web(frame, shapes)
     print(f"done: {len(frame)} regions, {len(table):,} cell weights in {time.time() - started:.0f} s")
 
-    # the dataset card lists the region files when they exist
     if (OUT / "catalog.parquet").exists():
         import hf_dataset
 

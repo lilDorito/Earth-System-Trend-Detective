@@ -19,7 +19,6 @@ function put(colors: Float32Array, k: number, [r, g, b]: Rgb) {
   colors[k * 3 + 2] = Math.min(1, b / 255 + lift);
 }
 
-// coloured by the station's own trend on the map's change scale; rings mark significant trends
 export function trendStyle(list: StationList, stops: Rgb[], scale: number, onlySignificant: boolean): StationStyle {
   const n = list.ids.length;
   const colors = new Float32Array(n * 3);
@@ -37,7 +36,6 @@ export function trendStyle(list: StationList, stops: Rgb[], scale: number, onlyS
   return { colors, kinds };
 }
 
-// one colour; stations long enough for a trend drawn larger
 export function plainStyle(list: StationList): StationStyle {
   const n = list.ids.length;
   const colors = new Float32Array(n * 3);

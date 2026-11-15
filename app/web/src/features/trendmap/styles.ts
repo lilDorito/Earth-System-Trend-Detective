@@ -7,39 +7,22 @@ export const FADE = 0.14;
 export type Rgb = [number, number, number];
 type Stops = Rgb[]; // evenly spaced from the low end to the high end
 
-// diverging, low end = decrease. The middle is dark like the globe, so where change fades out nothing
-// glares, and stronger change reads brighter; the two ends differ in hue. The inner stops are lifted so
-// typical, modest changes are not lost in the dark
+// diverging, low end = decrease; the middle is dark like the globe, so near-zero change fades out
 const CHANGE = {
-  // blue to red through a dark middle: colder reads icier, warmer reads hotter
   heat: [[190, 230, 255], [80, 165, 235], [40, 100, 190], [34, 75, 146], [38, 38, 44], [146, 42, 34], [190, 50, 40], [240, 100, 50], [255, 200, 120]],
-  // drier sand to wetter teal
   water: [[245, 210, 140], [205, 150, 70], [145, 95, 40], [106, 73, 34], [38, 38, 44], [22, 97, 95], [25, 130, 125], [60, 190, 175], [160, 240, 225]],
-  // loss in rust and orange, gain in icy blue
   cryo: [[255, 185, 110], [235, 120, 45], [170, 70, 20], [126, 54, 17], [38, 38, 44], [51, 87, 136], [70, 120, 180], [140, 190, 235], [230, 245, 255]],
-  // cooling blue to heating magma
   oceanHeat: [[150, 200, 250], [70, 140, 220], [40, 80, 170], [32, 58, 126], [38, 38, 44], [116, 29, 84], [160, 40, 100], [230, 80, 90], [255, 170, 110]],
-  // falling teal to rising magenta (after cmocean curl)
   sea: [[170, 230, 220], [70, 170, 170], [30, 110, 120], [24, 82, 92], [38, 38, 44], [104, 32, 82], [140, 40, 110], [205, 80, 160], [245, 160, 215]],
-  // pH indicator: acidifying turns red-orange, the other way green-blue
   ph: [[255, 190, 70], [240, 110, 40], [190, 50, 30], [140, 39, 27], [38, 38, 44], [34, 104, 78], [40, 140, 100], [70, 170, 200], [150, 140, 240]],
-  // falling violet to rising amber
   pco2: [[210, 190, 250], [150, 120, 210], [95, 60, 150], [70, 44, 112], [38, 38, 44], [126, 70, 22], [170, 95, 25], [235, 150, 40], [255, 210, 120]],
-  // browning to greening
   chlorophyll: [[235, 195, 120], [190, 135, 60], [130, 85, 35], [97, 63, 27], [38, 38, 44], [39, 97, 39], [50, 130, 50], [110, 190, 70], [200, 240, 120]],
-  // fresher blue to saltier tan
   salinity: [[150, 215, 220], [60, 150, 190], [40, 85, 165], [34, 60, 126], [38, 38, 44], [119, 90, 32], [160, 120, 40], [220, 175, 70], [250, 225, 150]],
-  // dimmer slate to brighter gold
   radiation: [[190, 190, 215], [125, 125, 155], [80, 80, 105], [61, 61, 80], [38, 38, 44], [131, 95, 22], [175, 125, 25], [235, 180, 40], [255, 235, 140]],
-  // weaker violet to stronger green
   wind: [[225, 190, 250], [170, 110, 210], [115, 55, 150], [85, 41, 112], [38, 38, 44], [51, 97, 37], [70, 130, 45], [130, 190, 70], [210, 240, 140]],
-  // lower lavender to higher orange
   pressure: [[200, 185, 245], [140, 120, 210], [85, 65, 150], [63, 48, 112], [38, 38, 44], [133, 75, 27], [180, 100, 30], [240, 155, 50], [255, 215, 140]],
-  // clearing sky blue to hazier amber
   aerosol: [[175, 225, 255], [90, 170, 230], [45, 110, 180], [40, 75, 125], [38, 38, 44], [120, 85, 40], [175, 120, 45], [225, 170, 70], [250, 225, 150]],
-  // thinning ozone violet to thickening teal
   ozone: [[230, 175, 255], [180, 105, 225], [125, 55, 170], [90, 45, 125], [38, 38, 44], [30, 95, 100], [35, 145, 145], [80, 200, 190], [175, 245, 230]],
-  // fewer fires slate blue to more fires red and orange
   fire: [[185, 210, 235], [115, 150, 190], [70, 95, 135], [55, 65, 95], [38, 38, 44], [120, 35, 30], [185, 45, 35], [235, 95, 40], [255, 190, 90]],
 } satisfies Record<string, Stops>;
 
@@ -57,17 +40,12 @@ const VALUES = {
   plasma: [[13, 8, 135], [84, 2, 163], [139, 10, 165], [185, 50, 137], [219, 92, 104], [244, 136, 73], [254, 188, 43], [240, 249, 33]],
   speed: [[30, 30, 60], [40, 70, 110], [40, 115, 130], [60, 155, 120], [130, 190, 100], [210, 215, 110], [255, 245, 180]],
   pressure: [[60, 40, 110], [110, 90, 170], [170, 160, 210], [230, 225, 230], [250, 205, 150], [235, 150, 60], [170, 80, 10]],
-  // clean air dark blue to thick haze yellow-brown
   haze: [[20, 30, 60], [40, 70, 110], [90, 110, 120], [150, 135, 100], [200, 160, 80], [235, 195, 90], [255, 235, 170]],
-  // ozone hole violet through blue and teal to high-latitude yellow
   ozone: [[60, 20, 100], [95, 45, 160], [60, 90, 190], [40, 145, 185], [60, 190, 150], [170, 220, 100], [250, 235, 120]],
-  // bare ground tan to dense forest green
   vegetation: [[120, 95, 70], [175, 150, 105], [215, 200, 130], [170, 200, 95], [100, 170, 70], [40, 130, 55], [15, 85, 45]],
-  // no fire black-brown to red, orange and yellow
   fire: [[25, 15, 20], [80, 20, 25], [145, 30, 30], [205, 60, 30], [240, 120, 40], [252, 185, 70], [255, 240, 170]],
 } satisfies Record<string, Stops>;
 
-// process fingerprints: share of a scenario's variables that match, from none (dark) to all (hot)
 export const FINGERPRINT: Stops = [[30, 30, 40], [70, 40, 90], [130, 50, 120], [200, 70, 110], [245, 120, 80], [255, 200, 90], [255, 245, 190]];
 
 export type VariableStyle = {
@@ -145,7 +123,6 @@ export function colorAt(stops: Stops, t: number): Rgb {
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
 
-// a value on a scale centred on zero
 export const divergingColor = (stops: Stops, value: number, max: number) => colorAt(stops, (value / max + 1) / 2);
 
 const bandCache = new WeakMap<Stops, Rgb[]>();
@@ -164,7 +141,6 @@ export function bandGradient(stops: Stops): string {
 }
 
 // colour scale limits in the values view, in the units drawn (log10 for log variables)
-// (an API older than value_range gets a placeholder scale instead of an error)
 export function valueRange(style: VariableStyle, range: [number, number] | undefined): [number, number] {
   const [lo, hi] = range ?? [0, 1];
   if (style.signed) {

@@ -6,7 +6,6 @@ from .contracts import PROCESSED_COLUMNS, validate_series
 
 
 def to_monthly(df: pd.DataFrame) -> pd.DataFrame:
-    # TODO(stats): drop sparse months
     out = (
         df.set_index("time")["value"]
         .resample("MS")
@@ -18,7 +17,6 @@ def to_monthly(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_anomalies(monthly: pd.DataFrame) -> pd.DataFrame:
-    # TODO(stats): optional fixed baseline period
     out = monthly.copy()
     month = out["time"].dt.month
     out["climatology"] = out.groupby(month)["value"].transform("mean")

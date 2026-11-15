@@ -8,7 +8,6 @@ import { linearFit, mean, round, twoSidedP, variance } from "./stats";
 
 type Profile = { base: number; amplitude: number; trend: number; noise: number; eventShift: number; floor?: number };
 
-// a plausible profile inside the variable's usual 2nd-98th percentile range
 function fromRange(typical: VariableInfo["typical_range"]): Profile {
   if (!typical) return { base: 10, amplitude: 3, trend: 0.2, noise: 1, eventShift: 0 };
   const [lo, hi] = typical;

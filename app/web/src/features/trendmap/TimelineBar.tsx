@@ -13,7 +13,6 @@ import { useTrendMapStore } from "@/store/useTrendMapStore";
 
 const STEP_MS = 1600;
 
-// rightInset: px taken by the selection column on wide screens, so the bar centres in what is left
 export default function TimelineBar({ rightInset = 0 }: { rightInset?: number }) {
   const s = useTrendMapStore(
     useShallow((s) => ({
@@ -21,6 +20,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
       units: s.meta?.units ?? "",
       view: s.view,
       frameYear: s.frameYear,
+      busy: s.loading || !!s.hotspotLoading,
       setFrameYear: s.setFrameYear,
       setView: s.setView,
     })),
@@ -31,13 +31,13 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
   const last = frames?.years[frames.years.length - 1] ?? 0;
 
   useEffect(() => {
-    if (!playing || !frames) return;
+    if (!playing || !frames || s.busy) return;
     const timer = setInterval(() => {
       const year = useTrendMapStore.getState().frameYear;
       s.setFrameYear(year >= last || year < first ? first : year + 1);
     }, STEP_MS);
     return () => clearInterval(timer);
-  }, [playing, frames, first, last, s.setFrameYear]);
+  }, [playing, frames, s.busy, first, last, s.setFrameYear]);
 
   if (!frames) return null;
 
@@ -56,6 +56,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
           variant="outline"
           size="icon"
           aria-label={playing ? "Pause" : "Play"}
+          disabled={s.busy}
           onClick={() => {
             if (!playing && !active) s.setFrameYear(first);
             setPlaying(!playing);
@@ -64,7 +65,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
           {playing ? <Pause /> : <Play />}
         </Button>
 
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1 transition-opacity", s.busy && "pointer-events-none opacity-50")}>
           <div className="flex items-baseline justify-between gap-3">
             <div>
               <p className="font-mono text-lg font-medium tabular-nums">{active ? s.frameYear : "Whole period"}</p>
@@ -78,7 +79,6 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
             )}
           </div>
 
-          {/* world mean anomaly per year, aligned with the slider */}
           <div className="mt-2 flex h-7 items-center gap-px">
             {frames.global_mean.map((v, i) => {
               const year = frames.years[i];
@@ -117,6 +117,7 @@ export default function TimelineBar({ rightInset = 0 }: { rightInset?: number })
               s.setFrameYear(+e.target.value);
             }}
             aria-label="Year"
+            disabled={s.busy}
             className="mt-1 h-1.5 w-full cursor-pointer accent-primary pointer-coarse:h-6"
           />
           <div className="mt-0.5 flex justify-between font-mono text-[10px] text-muted-foreground">

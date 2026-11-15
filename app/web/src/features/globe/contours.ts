@@ -7,7 +7,6 @@ import { prepareField } from "./field";
 type Dense = { values: Float32Array; coverage: Float32Array; width: number; height: number; lon0: number; lat0: number; dlon: number; dlat: number };
 
 function dense(values: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry): Dense {
-  // the same cached field the globe draws (or will draw), so an edge costs only the marching squares
   const field = prepareField(values, null, null, nlat, nlon, grid, false);
   const n = field.width * field.height;
   const out = new Float32Array(n);
@@ -40,7 +39,6 @@ export function contourSegments(values: ArrayLike<number | null>, nlat: number, 
       const a = at(i, j), b = at(i, j + 1), c = at(i + 1, j + 1), e = at(i + 1, j);
       const code = (a >= level ? 8 : 0) | (b >= level ? 4 : 0) | (c >= level ? 2 : 0) | (e >= level ? 1 : 0);
       if (code === 0 || code === 15) continue;
-      // crossing points on the four sides: bottom (a-b), right (b-c), top (e-c), left (a-e)
       const bottom = () => point(i, j, i, j + 1, a, b);
       const right = () => point(i, j + 1, i + 1, j + 1, b, c);
       const top = () => point(i + 1, j, i + 1, j + 1, e, c);
@@ -64,7 +62,6 @@ export function contourSegments(values: ArrayLike<number | null>, nlat: number, 
 
 export type Extremum = { lat: number; lon: number; high: boolean };
 
-// cells that are the highest or lowest within `radius` degrees and stand out from their surroundings
 export function extrema(values: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry, radius = 12, limit = 14): Extremum[] {
   const d = dense(values, nlat, nlon, grid);
   const step = Math.max(1, Math.round(1 / d.dlat)); // test about one point per degree

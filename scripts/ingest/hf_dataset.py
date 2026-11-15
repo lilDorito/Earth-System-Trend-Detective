@@ -62,7 +62,6 @@ LICENSES = {
     "GFED5": "CC BY 4.0 (Chen et al. 2023, GFED5 burned area)",
 }
 
-# grids from scripts/ingest/extra.py: (units, name, group, domain, product)
 EXTRA = {
     "aod": ("1", "Aerosol optical depth at 550 nm (MERRA-2)", "atmosphere", "global", "M2TMNXAER v5.12.4"),
     "to3": ("DU", "Total column ozone (MERRA-2)", "atmosphere", "global", "M2TMNXCHM v5.12.4"),
@@ -102,7 +101,6 @@ def source_path(key: str, kind: str) -> Path | None:
     candidates = {
         "csv": [NASA_DIR / "processed" / f"{key}.csv", NASA_DIR / f"{key}.csv"],
         "nc": [OCEAN_DIR / f"{key}.nc"],
-        # extra.py writes to data/extra/processed; files dropped straight into data/ work too
         "extra": [EXTRA_DIR / f"{key}.nc", ROOT / "data" / f"{key}.nc"],
     }[kind]
     return next((p for p in candidates if p.exists()), None)
@@ -230,7 +228,6 @@ def build_stations() -> None:
     print(f"  stations: {wide.num_rows:,} station-months, {pq.read_metadata(out / 'stations.parquet').num_rows:,} stations")
 
 
-# global monthly series (NOAA GML CO2) next to the grids: series/<name>.parquet
 def build_series() -> None:
     sources = [EXTRA_DIR / "co2_monthly.csv", ROOT / "data" / "co2_monthly.csv"]
     path = next((p for p in sources if p.exists()), None)
@@ -247,7 +244,6 @@ LAND_ONLY = {"burned_area"}
 
 
 def land_cells(table: pa.Table) -> pa.Table:
-    # cells that overlap any country (Natural Earth, regions/weights.parquet)
     weights = pq.read_table(OUT / "regions" / "weights.parquet").to_pandas()
     index = pq.read_table(OUT / "regions" / "index.parquet", columns=["id", "kind"]).to_pandas()
     countries = set(index.loc[index["kind"] == "country", "id"])
@@ -365,8 +361,6 @@ def write_card(catalog: pd.DataFrame) -> None:
     (OUT / "LICENSE.md").write_text(LICENSE.format(lines=lines), encoding="utf-8")
 
 
-# trends/<key>.npz: whole-record trend grid, year maps and colour scales per variable, read by the API
-# (src/trendmaps.py), plus trends/_wind.npz with the mean wind vector
 def build_trends(keys: list[str]) -> None:
     import sys
 
@@ -431,7 +425,12 @@ def verify(args) -> None:
     catalog = pd.read_parquet(OUT / "catalog.parquet")
     meta = variables()
     for key in catalog["key"]:
-        source = read_csv(source_path(key, "csv")) if meta[key]["kind"] == "csv" else read_nc(source_path(key, meta[key]["kind"]), key)
+        kind = meta[key]["kind"]
+        path = source_path(key, "csv" if kind == "csv" else kind)
+        if path is None:
+            print(f"  {key:24s} skipped (source file not found)")
+            continue
+        source = read_csv(path) if kind == "csv" else read_nc(path, key)
         if key in LAND_ONLY:
             source = land_cells(source)
         built = pq.read_table(OUT / "grid" / f"{key}.parquet")

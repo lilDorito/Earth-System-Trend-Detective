@@ -20,14 +20,12 @@ async function clearOfflineCache(): Promise<boolean> {
     found ||= keys.length > 0;
     await Promise.all(keys.map((key) => caches.delete(key)));
   } catch {
-    // no cache storage
   }
   try {
     const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? [];
     found ||= registrations.length > 0;
     await Promise.all(registrations.map((r) => r.unregister()));
   } catch {
-    // no service worker support
   }
   return found;
 }
@@ -37,7 +35,6 @@ function reloadOnce(reason: string) {
     if (sessionStorage.getItem("reloaded")) return; // tried already in this tab: do not loop
     sessionStorage.setItem("reloaded", reason);
   } catch {
-    // storage blocked: reload anyway
   }
   window.location.reload();
 }

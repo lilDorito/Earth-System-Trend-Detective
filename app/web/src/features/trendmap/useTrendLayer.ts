@@ -9,7 +9,6 @@ import type { FieldLook } from "@/features/globe/FieldLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import { FADE, FINGERPRINT, bandColors, styleFor, valueRange } from "./styles";
 
-// per-cell mean over the years, skipping missing values
 function periodMean(frames: TrendFrames): (number | null)[] {
   const n = frames.frames[0]?.length ?? 0;
   const sum = new Float64Array(n);
@@ -50,10 +49,8 @@ export function useTrendLayer() {
     return style.log ? { years: s.valueFrames.frames.map(log), mean: log(mean) } : { years: s.valueFrames.frames, mean };
   }, [s.valueFrames, style.log, style.logFloor]);
 
-  // built even while hidden, so switching the layer on can fade in at once
   const layer = useMemo(() => {
     const { meta } = s;
-    // a process fingerprint replaces the variable while it is on
     if (s.hotspot) {
       const h = s.hotspot;
       const look: FieldLook = { palette: bandColors(FINGERPRINT), lo: 0, hi: 1, fade: 0, isobars: false, stipple: false };
@@ -110,7 +107,6 @@ export function useTrendLayer() {
     return () => cancel(handle);
   }, [s.display, s.frames, s.valueFrames, valueMaps, s.frameYear, extend]);
 
-  // sea ice: the edge in the first year against the edge in the year shown (or the period mean)
   const edges = useMemo(() => {
     if (!layer || style.edge == null || s.display !== "values" || !s.valueFrames) return null;
     const { n_lat, n_lon } = s.valueFrames;

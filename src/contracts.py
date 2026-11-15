@@ -8,7 +8,7 @@ import pandas as pd
 from pydantic import BaseModel, Field, model_validator
 
 Resolution = Literal["hourly", "3-hourly", "daily", "monthly"]
-SourceName = Literal["giovanni_point", "harmony_area", "nasa_power", "hf_grid", "firms", "appeears", "mock"]
+SourceName = Literal["hf_grid", "mock"]
 Mode = Literal["trend", "event"]
 
 SERIES_COLUMNS = ("time", "value")
@@ -67,7 +67,6 @@ class VariableInfo(BaseModel):
     short_definition: str
     units_raw: str
     units: str
-    conversion: str = "identity"
     resolution: Resolution
     group: Literal["atmosphere", "land", "ocean"] = "atmosphere"  # heading in the explorer's list
     typical_range: tuple[float, float] | None = None  # 2nd-98th percentile in display units; shapes mock data

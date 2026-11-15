@@ -1,17 +1,15 @@
 // API types, mirror src/contracts.py and app/api/schemas.py
 
 export type Resolution = "hourly" | "3-hourly" | "daily" | "monthly";
-export type SourceName = "giovanni_point" | "harmony_area" | "nasa_power" | "hf_grid" | "firms" | "appeears" | "mock";
+export type SourceName = "hf_grid" | "mock";
 export type Mode = "trend" | "event";
 
 export type Point = { type: "point"; lat: number; lon: number };
 export type BBox = { type: "bbox"; west: number; south: number; east: number; north: number };
 export type RegionLocation = { type: "region"; id: string };
-// several regions averaged as one area
 export type RegionsLocation = { type: "regions"; ids: string[] };
 export type Location = Point | BBox | RegionLocation | RegionsLocation;
 
-// a Natural Earth country or admin-1 region (public/regions/index.json, /api/boundaries)
 export type Boundary = {
   id: string;
   name: string;
@@ -36,7 +34,6 @@ export type VariableInfo = {
   short_definition: string;
   units_raw: string;
   units: string;
-  conversion: string;
   resolution: Resolution;
   group: "atmosphere" | "land" | "ocean"; // heading in the explorer's list
   typical_range: [number, number] | null; // 2nd-98th percentile in display units; shapes mock data
@@ -220,11 +217,9 @@ export type TrendFrames = GridGeometry & {
   n_lon: number;
   // per year: anomaly vs the baseline (or the value itself), latitude ascending then longitude
   frames: (number | null)[][];
-  // area-weighted global mean anomaly per year
   global_mean: (number | null)[];
 };
 
-// mean 10 m wind vector over the period, m/s
 export type TrendWind = GridGeometry & {
   start: number;
   end: number;
@@ -234,7 +229,6 @@ export type TrendWind = GridGeometry & {
   v: (number | null)[];
 };
 
-// a preset or boundary name, or a box; the mock answers boundaries from their box and label
 export type TrendRegionQuery = {
   name?: string;
   box?: Pick<BBox, "south" | "north" | "west" | "east">;
@@ -253,7 +247,6 @@ export type TrendRegion = {
   mean: (number | null)[];
   fitted: (number | null)[];
   global_mean: (number | null)[];
-  // deviation from the period mean, one stripe per year
   stripes: (number | null)[];
   trend: "increasing" | "decreasing" | "no trend";
   p: number;
@@ -322,9 +315,6 @@ export type StationCompare = {
   } | null;
 };
 
-// --- insights (app/api/insights.py) ---
-
-// a point, a Natural Earth region id or a box
 export type InsightPlace =
   | { lat: number; lon: number }
   | { region: string }
@@ -408,7 +398,6 @@ export type Divergence = GridGeometry & {
   labels: number[]; // area id per cell, 0 outside
 };
 
-// NOAA GML annual mean atmospheric CO2
 export type Co2Series = {
   source: string;
   years: number[];

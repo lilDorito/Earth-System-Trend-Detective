@@ -18,7 +18,6 @@ export function inside(rings: Ring[], lat: number, lon: number) {
   return hit;
 }
 
-// the admin-1 region (oblast, state, province) of a country at a point, null when the country has none there
 export async function adminAt(country: Boundary, lat: number, lon: number): Promise<Boundary | null> {
   const all = await loadRegionLevel();
   const candidates = all
@@ -34,7 +33,6 @@ export async function countryAt(lat: number, lon: number): Promise<Boundary | nu
   const all = await loadBoundaries();
   // smallest first: a small country inside a big one's box is checked before the big one
   const candidates = all.filter((b) => b.kind === "country" && inBox(b, lat, lon)).sort((a, b) => a.areaKm2 - b.areaKm2);
-  // outlines fetched together, not one after another
   const outlines = await Promise.all(candidates.map((c) => loadOutline(c).catch(() => [])));
   return candidates.find((_, i) => inside(outlines[i], lat, lon)) ?? null;
 }

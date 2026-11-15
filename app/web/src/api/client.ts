@@ -30,7 +30,6 @@ import type {
 
 import { useServerStatus } from "./status";
 
-// a JSON error with a detail field comes from the API itself
 async function hasDetail(res: Response): Promise<boolean> {
   try {
     const body = await res.clone().json();
@@ -79,9 +78,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     await pause(s);
     res = await attempt(path, init);
   }
-  if (res && !asleep(res.status)) useServerStatus.setState({ waking: false });
+  useServerStatus.setState({ waking: false });
   if (!res) {
-    useServerStatus.setState({ waking: false });
     throw new ApiError(0, "No answer from the server. It may still be starting; try again in a minute.");
   }
   if (!res.ok) {

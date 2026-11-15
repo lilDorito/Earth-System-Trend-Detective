@@ -159,7 +159,6 @@ export function trendPoint(lat: number, lon: number): TrendPoint {
   };
 }
 
-// one anomaly map per year, relative to the mean of the first years
 export function trendFrames(kind: "anomaly" | "values" = "anomaly"): TrendFrames {
   const { values } = getField();
   const cells = LATS.length * LONS.length;
@@ -245,7 +244,6 @@ export function trendRegion(query: TrendRegionQuery): TrendRegion {
   };
 }
 
-// trade winds, westerlies and polar easterlies, with a little longitude wobble
 export function trendWind(): TrendWind {
   const u: number[] = [];
   const v: number[] = [];

@@ -1,4 +1,4 @@
-# trend and event analysis (owner: stats)
+# trend and event analysis
 
 from datetime import date
 

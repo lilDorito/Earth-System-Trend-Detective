@@ -29,6 +29,16 @@ def test_no_trend_is_not_significant():
     assert sig.mean() < 0.2
 
 
+def test_constant_cells_do_not_dilute_fdr():
+    rng = np.random.default_rng(5)
+    n = 25
+    x = np.zeros((n, 20, 20))
+    x[:, 0, :5] = 0.05 * np.arange(n)[:, None] + rng.normal(0, 0.5, (n, 5))
+    _, p, q, sig = gridtrends.compute_grid(x)
+    assert np.isnan(q[1:]).all() and not sig[1:].any()
+    assert np.allclose(q[0, :5], gridtrends.fdr_bh(p[0, :5]))
+
+
 def test_fdr_monotone_and_nan_safe():
     p = np.array([[0.001, 0.04], [0.5, np.nan]])
     q = gridtrends.fdr_bh(p)

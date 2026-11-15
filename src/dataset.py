@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from .config import ROOT
 
 REPO = os.environ.get("HF_DATASET", "lilDorito/earth-trend-data")
-REVISION = os.environ.get("HF_DATASET_REVISION", "51408f2a7c10320d1cd6e67c67627258e0646801")
+REVISION = os.environ.get("HF_DATASET_REVISION", "df16deab80567b3780e26549d90d78b944ce09d9")
 LOCAL = os.environ.get("HF_DATASET_PATH")  # a local copy (e.g. data/hf) instead of the Hub
 
 LAT = np.arange(-89.5, 90, 1.0)
@@ -24,7 +24,6 @@ SEARCH_CELLS = 2  # how far (in cells) a point may snap to the nearest cell with
 MIN_FRAC = 1e-4  # box slivers below this share of a cell are left out
 READERS = 8  # latitude bands fetched at once for an area
 
-# source units -> units people read, with the factor to get there
 DISPLAY_UNITS = {
     "degC": (1, "°C"),
     "J/m2": (1e-9, "GJ/m²"),
@@ -37,7 +36,6 @@ DISPLAY_UNITS = {
     "cm LWE": (1, "cm"),
     "km2/month": (1, "km²/month"),
 }
-# dimensionless indices are labelled with their own name
 KEY_UNITS = {"sla": (1000, "mm"), "aod": (1, "AOD"), "ndvi": (1, "NDVI")}
 
 # variables built from others: speed of the annual mean wind vector (smaller than the mean speed where winds turn)
@@ -132,7 +130,6 @@ def _release() -> None:
 def _grid_file(key: str) -> pq.ParquetFile:
     if key in VIRTUAL:
         raise DatasetError(f"{variable(key)['name']} has annual maps only")
-    # the footer stays cached, so a later point read only fetches one row group
     return pq.ParquetFile(open_file(f"grid/{key}.parquet"))
 
 
@@ -161,10 +158,8 @@ def cell_center(value: float) -> float:
 
 
 def point_series(key: str, lat: float, lon: float) -> tuple[pd.DataFrame, float, float]:
-    # monthly series of the cell at the point, or of the nearest cell with data close by
     lat0, lon0 = cell_center(lat), ((np.floor(lon) + 180) % 360) - 179.5
     best = None
-    # own band first: when the cell itself has data, no neighbouring band is fetched
     for dlat in sorted(range(-SEARCH_CELLS, SEARCH_CELLS + 1), key=abs):
         band_lat = lat0 + dlat
         if best is not None and abs(dlat) >= best[0]:
@@ -235,7 +230,6 @@ def _area(key: str, cells: pd.DataFrame, where: str) -> Area:
 
 
 def area_series(key: str, south: float, north: float, west: float, east: float) -> Area:
-    # cells partly inside the box count by the share inside it
     cells = _cells(box_fractions(LAT, LON, south, north, west, east))
     if cells.empty:
         raise DatasetError("The area is empty")
@@ -244,7 +238,6 @@ def area_series(key: str, south: float, north: float, west: float, east: float) 
 
 @lru_cache
 def regions() -> pd.DataFrame:
-    # Natural Earth countries and admin-1 regions (scripts/ingest/regions.py)
     try:
         with open_file("regions/index.parquet") as file:
             return pd.read_parquet(file).set_index("id", drop=False)
@@ -275,7 +268,6 @@ def region_series(key: str, rid: str) -> Area:
 
 
 def regions_cells(ids: list[str]) -> pd.DataFrame:
-    # several regions as one area: each cell counts by the share of it inside any of them
     ids = list(dict.fromkeys(ids))
     chosen = pd.DataFrame([region(rid) for rid in ids])
     countries = set(chosen.loc[chosen["kind"] == "country", "id"])
@@ -310,7 +302,6 @@ def quantile_abs(values: np.ndarray, q: float) -> float:
     return float(np.quantile(np.abs(finite), q)) if finite.size else 0.0
 
 
-# rounds a colour scale limit up to 1, 2, 2.5 or 5 times a power of ten
 def nice_limit(value: float) -> float:
     if not np.isfinite(value) or value <= 0:
         return 1.0
@@ -323,7 +314,6 @@ def nice_limit(value: float) -> float:
 
 @lru_cache(maxsize=1)
 def co2() -> pd.DataFrame:
-    # NOAA GML monthly CO2 (ppm), global mean and Mauna Loa (series/co2.parquet)
     try:
         with open_file("series/co2.parquet") as file:
             return pd.read_parquet(file)

@@ -33,8 +33,6 @@ const DISPLAYS: { value: Display; label: string }[] = [
   { value: "values", label: "Values" },
 ];
 
-// colour bar for what is on the globe, with notes for the variables drawn in their own way
-// atmospheric CO2 beside the variables it drives, with a line on how
 const CO2_HEAT = "CO₂ traps heat; its rise is the main driver of the warming trend on the map.";
 const CO2_CONTEXT: Record<string, string> = {
   merra2_t2m: CO2_HEAT,
@@ -150,7 +148,6 @@ function Legend() {
     </PanelSection>
   );
 }
-// station toggle with what the points show; points are fetched only once switched on
 function Stations() {
   const { variable, show, setShow, onlySignificant } = useTrendMapStore(
     useShallow((s) => ({ variable: s.variable, show: s.showStations, setShow: s.setShowStations, onlySignificant: s.onlySignificant })),
@@ -238,7 +235,6 @@ export default function ControlPanel() {
       onlySignificant: s.onlySignificant,
       view: s.view,
       regionError: s.regionError,
-      // changes with every new selection, so each one folds the panel away on narrow screens
       selection: `${s.selected?.lat},${s.selected?.lon}|${s.station?.id ?? ""}|${s.region?.label ?? ""}`,
       hasSelection: s.selected !== null || s.station !== null || s.region !== null,
       setShowTrend: s.setShowTrend,
@@ -262,7 +258,6 @@ export default function ControlPanel() {
   }, [s.selection, s.hasSelection, co2Open]);
 
   return (
-    // on phones the open panel sits above the point and region sheets; collapsing it reveals them again
     <Panel
       className={cn(
         "scrollbar-thin absolute inset-x-3 top-3 max-h-[calc(100%-1.5rem)] overflow-y-auto overflow-x-hidden overscroll-contain sm:inset-x-auto sm:left-4 sm:top-4 sm:w-[300px]",
@@ -308,7 +303,6 @@ export default function ControlPanel() {
               )}
             </PanelSection>
           )}
-
 
           {s.variables.length > 0 && (
             <PanelSection>

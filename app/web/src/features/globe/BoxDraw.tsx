@@ -16,7 +16,6 @@ type Controls = EventDispatcher<{ start: object; end: object }> & { enabled: boo
 
 const round = (v: number) => Math.round(v * 100) / 100;
 
-// the shorter way round between the two longitudes
 function toBox(a: LatLon, b: LatLon): BBox {
   const eastward = ((b.lon - a.lon + 540) % 360) - 180 >= 0;
   return {

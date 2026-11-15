@@ -59,7 +59,6 @@ function score(b: Indexed, q: string): number {
   if (b.key.startsWith(q) || b.altKey.startsWith(q)) return 1;
   if (b.key.includes(` ${q}`) || b.key.includes(`-${q}`) || b.altKey.includes(` ${q}`)) return 2;
   if (b.key.includes(q)) return 3;
-  // "ukraine" also lists Ukraine's regions, after the country itself
   if (b.kind === "admin1" && b.countryKey.startsWith(q)) return 4;
   return -1;
 }
@@ -83,8 +82,6 @@ export const MIN_CELL_SHARE = 0.25; // smallest area worth a region, as a share 
 export const tooSmallForGrid = (b: Pick<Boundary, "kind" | "areaKm2" | "lat">) =>
   b.kind === "admin1" && b.areaKm2 < MIN_CELL_SHARE * CELL_KM2 * Math.cos((b.lat * Math.PI) / 180);
 
-// the regions worth drawing and picking: a country whose regions are mostly smaller than a cell (Latvia, Moldova)
-// is not split at all; elsewhere the odd tiny one (a city state) is left out
 const MAX_SMALL_SHARE = 0.5;
 let levelCached: Promise<Boundary[]> | null = null;
 
@@ -118,7 +115,6 @@ export function boundaryLabel(b: Boundary): string {
 
 const outlinesCached = new Map<string, Promise<Record<string, Ring[]>>>();
 
-// one file per country holds the country and its admin-1 regions, keyed by id
 export function loadCountryOutlines(country: string): Promise<Record<string, Ring[]>> {
   let file = outlinesCached.get(country);
   if (!file) {
@@ -142,7 +138,6 @@ export function boxRings(box: Pick<BBox, "south" | "north" | "west" | "east">): 
   return [[w, s, w + width, s, w + width, n, w, n, w, s]];
 }
 
-// a camera distance that roughly fits the area on screen
 export function fitDistance(box: Pick<BBox, "south" | "north" | "west" | "east">): number {
   const width = ((box.east - box.west + 360) % 360 || 360) * Math.cos((((box.south + box.north) / 2) * Math.PI) / 180);
   const span = Math.max(box.north - box.south, width);

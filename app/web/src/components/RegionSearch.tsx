@@ -21,7 +21,6 @@ export default function RegionSearch({ onPick, placeholder = "Search a country o
   const [active, setActive] = useState(0);
   const listId = useId();
 
-  // fetched on first focus, not with the page
   const load = () => {
     if (all || error) return;
     loadBoundaries().then(setAll, (e: Error) => setError(e.message));

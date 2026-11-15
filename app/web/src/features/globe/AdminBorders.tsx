@@ -1,6 +1,4 @@
-// borders of the next level down (states, oblasts, provinces) for the regions in the middle of the screen. Each
-// region's border fades in when it enters the middle and out when it leaves, and all of them fade with the zoom:
-// in from FADE_START, at full (but quiet) strength by FADE_FULL.
+// borders of states, oblasts and provinces near the middle of the screen, fading in with the zoom
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -26,7 +24,6 @@ const VIEW_HALF_ANGLE = 30 * DEG; // from the view axis to a corner of the scree
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const wrap = (lon: number) => ((lon + 540) % 360) - 180;
 
-// angle at the globe's centre between the view and the edge of the screen, radians
 function viewRadius(distance: number) {
   const a = Math.min(VIEW_HALF_ANGLE, Math.asin(1 / distance));
   return Math.asin(Math.min(1, distance * Math.sin(a))) - a;
@@ -40,7 +37,6 @@ const angle = (lat0: number, lon0: number, lat1: number, lon1: number) => {
 
 type Box = { south: number; north: number; west: number; east: number };
 
-// distance from the view centre to the nearest point of a bounding box, radians
 function distanceToBox(lat: number, lon: number, b: Box) {
   const inside = b.west <= b.east ? lon >= b.west && lon <= b.east : lon >= b.west || lon <= b.east;
   const nearLon = inside ? lon : Math.abs(wrap(lon - b.west)) < Math.abs(wrap(lon - b.east)) ? b.west : b.east;
@@ -51,7 +47,6 @@ type Candidate = Box & { id: string; country: string; points: Vector3[] };
 
 let candidatesCached: Promise<Candidate[]> | null = null;
 
-// every admin-1 region with a grid of points over its bounding box, to tell which are in the middle of the screen
 function loadCandidates(): Promise<Candidate[]> {
   candidatesCached ??= loadRegionLevel()
     .then((all) =>
@@ -78,7 +73,6 @@ function loadCandidates(): Promise<Candidate[]> {
 
 type FadingProps = { id: string; rings: Ring[]; visible: boolean; zoom: { current: number }; onGone: (id: string) => void };
 
-// one region's border; eases its own opacity towards "in the middle of the screen, scaled by the zoom"
 const FadingRegion = memo(function FadingRegion({ id, rings, visible, zoom, onGone }: FadingProps) {
   const size = useThree((s) => s.size);
   const geometry = useMemo(() => new LineSegmentsGeometry().setPositions(toSegments(rings)), [rings]);
@@ -160,7 +154,6 @@ export default function AdminBorders({ enabled }: { enabled: boolean }) {
   useFrame(({ camera, size }) => {
     const distance = camera.position.length();
     const active = enabled && distance < FADE_START;
-    // the fade that follows the camera distance, in both directions
     zoom.current = active ? MAX_OPACITY * smooth(Math.min(1, (FADE_START - distance) / (FADE_START - FADE_FULL))) : 0;
 
     if (!active) {
@@ -189,7 +182,6 @@ export default function AdminBorders({ enabled }: { enabled: boolean }) {
       return;
     last.current = { lat, lon, distance, aspect };
 
-    // regions with a sample point on the near side of the globe and inside the middle of the screen
     const inMiddle: [number, string][] = [];
     for (const region of candidates.current) {
       const near = distanceToBox(lat, lon, region);
@@ -207,7 +199,6 @@ export default function AdminBorders({ enabled }: { enabled: boolean }) {
     const next = new Set(inMiddle.sort(([a], [b]) => a - b).slice(0, MAX_REGIONS).map(([, id]) => id));
     if (!sameSet(next, visibleRef.current)) show(next);
 
-    // borders not loaded yet come from the per-country outline files
     const missing = [...next].filter((id) => !pending.current.has(id) && !have.current.has(id));
     if (missing.length === 0) return;
     const byCountry = new Map<string, string[]>();

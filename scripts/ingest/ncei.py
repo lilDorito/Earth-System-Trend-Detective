@@ -24,7 +24,6 @@ DATASET = "GSOM"
 START_YEAR = 2000
 DEFAULT_END = "2026-09-30"
 
-# GSOM elements: temperature, precipitation, snow, extremes, day counts, wind
 FEATURES = [
     "TAVG",
     "TMAX",
@@ -160,7 +159,6 @@ def fetch_all_stations(cl: Client, end: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# the MERRA-2 cell (0.5 x 0.625 deg) holding each station, for comparisons with the grid
 def add_merra_cols(sel: pd.DataFrame) -> pd.DataFrame:
     sel = sel.copy()
     sel["merra_lat"] = ((sel["latitude"] + 90) / 0.5).round() * 0.5 - 90
@@ -283,7 +281,6 @@ def cmd_extra_stations(a):
             pool = c.sort_values(
                 ["datacoverage", "maxdate", "mindate", "id"], ascending=[False, False, True, True]
             ).head(a.pool)
-            # pick the candidate farthest from the country's stations so far, to spread them out
             while len(placed) < need and not pool.empty:
                 ref = [(r.latitude, r.longitude) for r in base[base["country"] == cc].itertuples()]
                 ref += [(r["latitude"], r["longitude"]) for r in placed]

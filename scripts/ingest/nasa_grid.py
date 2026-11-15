@@ -274,7 +274,6 @@ def cmd_run(args):
         print(f"\n=== {short_name} v{version}: {', '.join(group_keys)} ===")
         granules = search_granules(short_name, version, f"{args.start_year}-01-01", f"{args.end_year}-12-31")
 
-        # one pass per granule fills every requested variable of the collection
         pending = []
         for g in granules:
             ym = granule_month(g)
@@ -311,7 +310,6 @@ def cmd_run(args):
     print("\nDone. Next: python scripts/ingest/nasa_grid.py assemble")
 
 
-# monthly slices -> processed/<variable>.csv (date, lat, lon, value, valid_frac)
 def cmd_assemble(args):
     for key in pick_keys(args.keys):
         parts_dir = PARTS / key

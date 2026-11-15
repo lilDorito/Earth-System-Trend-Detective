@@ -1,8 +1,5 @@
 # Data
-data/cache/
 data/raw/
-data/grid/
-merra2/
 data/ncei/
 data/ocean/
 data/extra/

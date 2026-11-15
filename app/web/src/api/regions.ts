@@ -13,5 +13,3 @@ export const REGIONS = {
 
 export type RegionName = keyof typeof REGIONS;
 
-export const REGION_NAMES = Object.keys(REGIONS) as RegionName[];
-export const shortRegionLabel = (name: RegionName) => REGIONS[name].label.split(" (")[0];

@@ -14,11 +14,7 @@ load_dotenv(ROOT / ".env")
 
 
 class Settings:
-    # "mock" or "live"
-    data_mode: str = os.environ.get("DATA_MODE", "mock")
-    earthdata_token: str | None = os.environ.get("EARTHDATA_TOKEN") or None
-    cache_dir: Path = ROOT / os.environ.get("CACHE_DIR", "data/cache")
-    request_timeout_s: float = float(os.environ.get("REQUEST_TIMEOUT_S", "60"))
+    data_mode: str = os.environ.get("DATA_MODE", "mock")  # "mock" or "live"
 
 
 settings = Settings()

@@ -37,7 +37,6 @@ export function Dropdown({
   const selected = items.find((item) => item.value === value);
   const enabled = items.map((item, i) => (item.disabled ? -1 : i)).filter((i) => i >= 0);
 
-  // closes on a click anywhere else
   useEffect(() => {
     if (!open) return;
     // pointerdown covers touch too, without waiting for the emulated mouse events
@@ -46,7 +45,6 @@ export function Dropdown({
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
-  // opening highlights the current item and scrolls it into view
   useEffect(() => {
     if (!open) return;
     const index = items.findIndex((item) => item.value === value);
@@ -81,7 +79,6 @@ export function Dropdown({
     } else if (e.key === "Escape" || e.key === "Tab") {
       setOpen(false);
     } else if (open && e.key.length === 1) {
-      // type a letter to jump to the next item starting with it
       const key = e.key.toLowerCase();
       const next = enabled.find((i) => i > active && items[i].label.toLowerCase().startsWith(key)) ??
         enabled.find((i) => items[i].label.toLowerCase().startsWith(key));

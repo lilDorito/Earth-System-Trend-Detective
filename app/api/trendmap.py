@@ -1,6 +1,4 @@
-# global trend map endpoints, each takes a variable and an optional year range (default: the whole record).
-# The whole record is read from trends/<key>.npz in the dataset (src/trendmaps.py); other ranges, mock data
-# and dataset revisions without those files are computed here
+# trend map endpoints; the whole record is read from trends/<key>.npz, other year ranges are computed here
 
 import gzip
 import json
@@ -94,7 +92,6 @@ def _ds(variable: str) -> gridtrends.GridDataset:
 @_one_at_a_time
 @lru_cache(maxsize=8)
 def _pre(name: str) -> dict | None:
-    # precomputed products for the whole record, None when the dataset revision has none
     if settings.data_mode != "live":
         return None
     try:
@@ -129,7 +126,6 @@ def _years_of(variable: str) -> np.ndarray:
 
 
 def _full(variable: str, start: int, end: int) -> dict | None:
-    # the precomputed products, when the request is for exactly the period they cover
     pre = _pre(variable)
     if pre is not None and start == int(pre["years"][0]) and end == int(pre["years"][-1]):
         return pre
@@ -241,7 +237,6 @@ def meta(variable: str = Variable):
         "min_years": MIN_YEARS,
         "n_lat": int(len(ds.lat)),
         "n_lon": int(len(ds.lon)),
-        # colour scale limits: most cells fall inside, outliers saturate
         "trend_scale": dataset.nice_limit(dataset.quantile_abs(slope, 0.9)),
         "anomaly_scale": dataset.nice_limit(dataset.quantile_abs(anomaly, 0.97)),
         "value_range": _value_range(ds.values),
@@ -281,7 +276,6 @@ def _frames_body(variable: str, start: int, end: int, kind: str) -> dict:
         years = _years(variable, start, end)
     # enough decimals for smooth contours over the data's own spread (pH spans about 0.1)
     spread = np.nanquantile(np.abs(coarse - np.nanmedian(coarse)), 0.98) if np.isfinite(coarse).any() else 1.0
-    # three significant digits of the spread: a thousandth of the range, far below one of the 24 colour bands
     decimals = int(np.clip(3 - np.floor(np.log10(max(spread, 1e-9))), 1, 6))
     return {
         "kind": kind,
@@ -307,7 +301,6 @@ def _wind(start: int, end: int):
 
 @router.get("/wind")
 def wind(start: int | None = None, end: int | None = None):
-    # mean 10 m wind vector over the period, for the particle layer (MERRA-2, live data only)
     if settings.data_mode != "live":
         raise HTTPException(404, "Wind vectors need DATA_MODE=live")
     start, end = _range("merra2_u10m", start, end)
@@ -329,7 +322,6 @@ def wind(start: int | None = None, end: int | None = None):
 
 @router.get("/co2")
 def co2(request: Request):
-    # atmospheric CO2: annual means with their Sen slope, and the monthly global and Mauna Loa records
     if settings.data_mode != "live":
         raise HTTPException(404, "The CO2 series needs DATA_MODE=live")
     try:
@@ -388,7 +380,6 @@ def _sea_fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarr
     meta = rows[name]
     key = (name, ds.lat.tobytes(), ds.lon.tobytes())
     if key not in _sea_masks:
-        # even-odd test of every cell centre against all rings; each edge only touches the rows it spans
         lat, lon = np.asarray(ds.lat, float), np.asarray(ds.lon, float)
         order = np.argsort(lat)
         inside = np.zeros((len(lat), len(lon)), dtype=bool)
@@ -408,7 +399,6 @@ def _sea_fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarr
 def _fractions(name: str, ds: gridtrends.GridDataset) -> tuple[str, np.ndarray, list[float]]:
     if name.startswith("sea-"):
         return _sea_fractions(name, ds)
-    # share of each cell inside the region: preset boxes on any grid, Natural Earth boundaries on the live 1 degree grid
     live = settings.data_mode == "live" and ds.values.shape[1:] == (len(dataset.LAT), len(dataset.LON))
     label = None
     if name in REGIONS:

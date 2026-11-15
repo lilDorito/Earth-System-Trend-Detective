@@ -160,7 +160,6 @@ export function fieldGrid(
   nlon: number,
   grid: GridGeometry,
 ) {
-  // about 720 texels around the globe: enough for smooth contours, small enough to rebuild per year
   const factor = Math.min(4, Math.max(2, Math.round(720 / nlon)));
   const { out: values, width, height } = upsample(smoothed.values, nlat, nlon, factor);
   const coverage = upsample(smoothed.coverage, nlat, nlon, factor).out;
@@ -202,7 +201,6 @@ export function prepareField(
 ): FieldGrid {
   let byOptions = prepared.get(values as object);
   if (!byOptions) prepared.set(values as object, (byOptions = new Map()));
-  // mask and sig are arrays from the store, so their identity is stable for the same data
   const key = `${extend}|${ids(mask)}|${ids(sig)}|${grid.lat0}|${grid.dlat}`;
   let field = byOptions.get(key);
   if (!field) {

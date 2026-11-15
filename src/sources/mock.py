@@ -63,7 +63,6 @@ class MockSource:
 
 
 def _from_range(typical: tuple[float, float] | None) -> tuple[float, float, float, float]:
-    # a plausible profile inside the variable's usual 2nd-98th percentile range
     if typical is None:
         return DEFAULT_PROFILE
     lo, hi = typical

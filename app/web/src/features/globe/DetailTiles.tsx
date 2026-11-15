@@ -21,7 +21,6 @@ const tiles: Tile[] = Array.from({ length: ROWS * COLS }, (_, i) => {
   return { key: `${row}-${col}`, west: -180 + col * SPAN, north: 90 - row * SPAN };
 });
 
-// one patch geometry per tile, reused whenever the tile comes back into view
 const geometries = new Map<string, SphereGeometry>();
 
 function geometryFor(tile: Tile) {
@@ -40,7 +39,6 @@ function greatCircle(lat1: number, lon1: number, lat2: number, lon2: number) {
   return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-// angle from a point to the closest spot of a tile
 function distanceToTile(tile: Tile, lat: number, lon: number) {
   const clampedLat = Math.min(tile.north, Math.max(tile.north - SPAN, lat));
   const offset = (((lon - tile.west) % 360) + 360) % 360;
@@ -48,7 +46,6 @@ function distanceToTile(tile: Tile, lat: number, lon: number) {
   return greatCircle(lat, lon, clampedLat, clampedLon);
 }
 
-// angle at the globe's centre covered by the view, from the centre of the screen to its corner
 function visibleRadius(distance: number, fov: number, aspect: number) {
   const corner = Math.atan(Math.tan((fov * DEG) / 2) * Math.sqrt(1 + aspect * aspect));
   const reach = distance * Math.sin(corner);
@@ -83,7 +80,6 @@ export default function DetailTiles() {
       cache.current.set(key, texture);
       rerender();
     }
-    // keep frames coming until uploads finish and the view has been checked where the camera stopped
     if (pending.current.length || !checkedFrom.equals(camera.position) || candidate.current !== visible.join()) invalidate();
 
     if (clock.elapsedTime - lastCheck.current < CHECK_INTERVAL) return;

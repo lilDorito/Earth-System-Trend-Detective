@@ -36,7 +36,6 @@ export default function ExplorerPage() {
     if (location?.type === "region" && boundary) return { kind: "region", boundary };
     return null;
   }, [location, boundary]);
-  // several regions at once are one outline made of all of theirs
   const several = location?.type === "regions";
   const singleOutline = useOutline(area);
   const manyOutline = useOutlines(several ? boundaries : []);

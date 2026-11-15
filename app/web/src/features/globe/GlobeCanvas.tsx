@@ -38,12 +38,9 @@ type GlobeCanvasProps = {
   onPick?: PickHandler;
   onClear?: () => void;
   onBox?: (box: BBox) => void;
-  // region mode: a click picks the area under it; zoomed is true close to the surface, where the next level
-  // down (states, oblasts) is picked instead of the country or sea
-  // multi: the "Several" switch is on, a click adds or removes the area instead of replacing the selection
+  // region mode: a click picks the area under it; zoomed picks the next level down, multi adds or removes
   onCountry?: (lat: number, lon: number, zoomed: boolean, multi: boolean) => void;
   multiSelect?: boolean; // offer the One / Several switch in region mode
-  // region mode: the area under the pointer, to highlight (same lookup as the click)
   hoverArea?: (lat: number, lon: number, zoomed: boolean) => Promise<Boundary | null>;
   rightInset?: number; // px covered by a side panel on the right (wide screens); the mode switch centres in the rest
   leftInset?: number; // px covered by a panel on the left (from tablet width up)
@@ -88,20 +85,15 @@ function Atmosphere() {
   );
 }
 
-// easter egg: a small comet whose nucleus is a rock with the team picture on it. It hangs at a fixed spot in space,
-// below and to the right of the globe as the page opens (clear of it on phone and desktop), and drifts as the globe
-// turns; its tail streaks up and to the right, away from the Sun that lights the nucleus from the lower left
+// easter egg: a small comet whose nucleus carries the team picture
 const SECRET_COMET_AT: [number, number, number] = [16.2, -50.6, -78.8];
 const SECRET_COMET_RADIUS = 0.5; // nucleus, world units, some 95 away
 const COMET_TAIL = new Vector3(0.82, 0.5, -0.28).normalize(); // away from the Sun
 const COMET_TAIL_LENGTH = 7;
 const COMET_TAIL_PUFFS = 36; // close together and soft, so they blend into one streak
 
-// tapping its head opens the full picture. It is small, so a short tap anywhere within a fingertip of the head counts,
-// unless the Earth is in front of it. Worked out in screen space on each tap, not by the 3D hit test
 const SECRET_COMET_HIT_PX = 24;
 
-// a soft round glow: with a white core for the coma, without one for the tail puffs (a core in each puff shows as beads)
 function glowTexture(core: boolean): CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 64;
@@ -117,15 +109,12 @@ function glowTexture(core: boolean): CanvasTexture {
   return texture;
 }
 
-// the tail: puffs along the tail direction, widening and fading with distance from the head
 const COMET_PUFFS = Array.from({ length: COMET_TAIL_PUFFS }, (_, i) => {
   const t = (i + 1) / COMET_TAIL_PUFFS;
   const along = COMET_TAIL.clone().multiplyScalar(t * COMET_TAIL_LENGTH);
   return { position: along.toArray() as [number, number, number], size: 1.1 + t * 2.4, opacity: 0.32 * (1 - t) ** 1.5 };
 });
 
-// a lumpy rock: a sphere whose surface points move in or out by a fixed pattern of their direction (so points the
-// sphere repeats along its seams move together and the surface stays closed), with flat facets
 function asteroidGeometry(): BufferGeometry {
   const geometry = new IcosahedronGeometry(1, 2);
   const pos = geometry.attributes.position;
@@ -211,13 +200,11 @@ function SecretComet({ onOpen }: { onOpen: () => void }) {
   if (!texture) return null;
   return (
     <group position={SECRET_COMET_AT}>
-      {/* only the nucleus is lit (everything else in the scene draws its own colours), from the Sun, opposite the tail */}
       <ambientLight intensity={0.7} />
       <directionalLight position={COMET_TAIL.clone().multiplyScalar(-100).toArray()} intensity={2.4} />
       <mesh ref={rock} geometry={geometry} scale={SECRET_COMET_RADIUS} rotation={[0.4, 1.1, 0.2]} raycast={() => null}>
         <meshStandardMaterial map={texture} flatShading roughness={1} metalness={0} />
       </mesh>
-      {/* coma: the glowing haze around the nucleus */}
       <sprite scale={2.4} raycast={() => null}>
         <spriteMaterial map={glow} color="#cfe6ff" transparent opacity={0.7} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
       </sprite>
@@ -233,7 +220,6 @@ function SecretComet({ onOpen }: { onOpen: () => void }) {
 // orbit controls turn 2π·rotateSpeed per screen height dragged; this rate keeps the surface under the finger
 const TRACK_FINGER = (2 * Math.tan(((FOV / 2) * Math.PI) / 180)) / (2 * Math.PI);
 
-// slower rotation and zoom close to the surface; on touch screens the globe follows the finger exactly
 function ZoomFeel({ touch }: { touch: boolean }) {
   const controls = useThree((s) => s.controls) as { rotateSpeed: number; zoomSpeed: number } | null;
   useFrame(({ camera }) => {
@@ -268,7 +254,6 @@ function ViewShift({ x, y }: { x: number; y: number }) {
   return null;
 }
 
-// fit the whole globe on narrow screens
 function FitCamera() {
   const camera = useThree((s) => s.camera);
   const invalidate = useThree((s) => s.invalidate);
@@ -329,7 +314,6 @@ function Earth({ texture, onPick, onClear, onHover, snap }: EarthProps) {
   );
 }
 
-// the camera distance, readable outside the canvas (a click needs to know how far in the view is)
 function CameraDistance({ target }: { target: { current: number } }) {
   useFrame(({ camera }) => {
     target.current = camera.position.length();
@@ -337,7 +321,6 @@ function CameraDistance({ target }: { target: { current: number } }) {
   return null;
 }
 
-// the area under the pointer in region mode: a light fill and outline
 function HoverArea({ boundary }: { boundary: Boundary }) {
   const area = useMemo(() => ({ kind: "region" as const, boundary }), [boundary]);
   const rings = useOutline(area);
@@ -357,7 +340,6 @@ const SPIN_STOP_AT = 1.6; // and with none
 
 type SpinControls = EventDispatcher<{ start: object; end: object }> & { autoRotate: boolean; autoRotateSpeed: number };
 
-// idle spin: stops on any drag or scroll, comes back after a quiet half minute, fades out when zoomed in
 function IdleSpin({ enabled }: { enabled: boolean }) {
   const controls = useThree((s) => s.controls) as SpinControls | null;
   const invalidate = useThree((s) => s.invalidate);
@@ -408,9 +390,7 @@ function IdleSpin({ enabled }: { enabled: boolean }) {
   return null;
 }
 
-// steps the resolution down when frames run slow; gaps between on-demand frames are ignored
-// render resolution: at most 1.5x (smooth fields and imagery look the same at 2x, for 44% fewer pixels to
-// shade), stepping down to 0.75x while frames rendered back to back stay slower than 40 fps
+// render resolution: at most 1.5x, stepping down to 0.75x while back-to-back frames stay slower than 40 fps
 function AdaptiveResolution() {
   const setDpr = useThree((s) => s.setDpr);
   const levels = useMemo(() => [0.75, 1, 1.25, 1.5].filter((d) => d <= Math.max(1, window.devicePixelRatio)), []);
@@ -474,7 +454,6 @@ function FlyTo({ target }: { target: GlobeCanvasProps["focus"] }) {
   return null;
 }
 
-// centred on the globe, which the view shift moves clear of the panels
 function Loading({ label, shift }: { label: string; shift: { x: number; y: number } }) {
   return (
     <motion.div
@@ -525,17 +504,14 @@ export default function GlobeCanvas({
   const [tool, setTool] = useState<"point" | "box" | "country">("point");
   const [multi, setMulti] = useState(false);
   const distance = useRef(Infinity);
-  // in region mode a click (also on a city label) selects the area there instead of a point
   const pick: PickHandler | undefined =
     tool === "country" && onCountry ? (lat, lon) => onCountry(lat, lon, distance.current < ADMIN_ZOOM, multiSelect && multi) : onPick;
   const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const hint = (touch && touchHint) || mouseHint;
   const hasSelection = !!marker || !!outline?.length;
-  // imagery, borders and labels appear together instead of popping in one by one
   const ready = !!texture && mapReady;
   const status = ready ? loading : "Loading globe";
   const insets = { "--left": `${leftInset}px`, "--right": `${rightInset}px` } as CSSProperties;
-  // a page with panels floating over the globe (the trend map) moves the controls clear of them
   const paneled = leftInset > 0;
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
@@ -618,14 +594,10 @@ export default function GlobeCanvas({
       />
       <AnimatePresence>{status && <Loading key={status} label={status} shift={viewShift} />}</AnimatePresence>
       {onBox && ready && (
-        // what a click or drag on the globe does; shift-drag draws a box in either mode. Wide screens: a bar
-        // centred in the space between the side panels; narrower: a thumb-reachable rail on the right edge, below
-        // a phone's collapsed control panel, with a clear button in place of right-click
         <div
           style={insets}
           className={cn(
             "absolute inset-x-3 flex flex-row items-center justify-center gap-2 sm:inset-x-auto sm:right-3 sm:top-4 sm:flex-col lg:left-[calc((var(--left)+100%-var(--right))/2)] lg:right-auto lg:-translate-x-1/2 lg:flex-row lg:transition-[left] lg:duration-200",
-            // below a page's panel header on phones, at the top otherwise
             paneled ? "top-24" : "top-3 justify-end",
           )}
         >
@@ -702,7 +674,6 @@ export default function GlobeCanvas({
         )}
         </div>
       )}
-      {/* bottom left; with floating panels, centred under the mode bar from tablet width up, where nothing covers it */}
       <div
         ref={readout}
         style={insets}
@@ -716,7 +687,6 @@ export default function GlobeCanvas({
       </div>
       <AnimatePresence>
         {secretOpen && (
-          // the picture behind the secret star; a tap anywhere (or Escape) closes it
           <motion.button
             type="button"
             aria-label="Close picture"
@@ -729,8 +699,7 @@ export default function GlobeCanvas({
             autoFocus
             className="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-4 bg-black/85 p-4 backdrop-blur-sm sm:gap-6"
           >
-            {/* Star Wars yellow in the Star Jedi face, tipped back into space like the opening crawl: the top edge
-                recedes, so the letters narrow upwards. The tilt sits on a wrapper, since motion owns the inner transform */}
+            {/* the tilt sits on a wrapper, since motion owns the inner transform */}
             <span className="block [perspective:260px]">
               <span className="block origin-bottom [transform:rotateX(38deg)]">
                 <motion.span

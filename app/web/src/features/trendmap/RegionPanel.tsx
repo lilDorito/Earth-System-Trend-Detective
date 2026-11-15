@@ -21,7 +21,6 @@ import { divergingColor, styleFor } from "./styles";
 const shortName = (region: TrendRegion) => region.label.split(" (")[0];
 const rgb = (c: number[]) => `rgb(${c.map(Math.round).join(",")})`;
 
-// one bar per year, colored by its deviation from the period mean
 function Stripes({ region, units, stops }: { region: TrendRegion; units: string; stops: ReturnType<typeof styleFor>["change"] }) {
   const peak = Math.max(...region.stripes.map((v) => Math.abs(v ?? 0))) || 1;
   return (
@@ -93,7 +92,6 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
   const style = styleFor(useTrendMapStore((s) => s.meta?.key));
   const meta = useTrendMapStore((s) => s.meta);
   const target = useTrendMapStore((s) => s.regionTarget);
-  // a newly picked area shows its name at once; the old numbers stay dimmed until the new ones arrive
   const loading = useTrendMapStore((s) => s.regionLoading) && !!target;
 
   useEffect(() => {

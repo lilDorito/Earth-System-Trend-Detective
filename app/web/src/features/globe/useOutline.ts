@@ -8,8 +8,6 @@ type Bounds = Pick<BBox, "south" | "north" | "west" | "east">;
 
 export type Area = { kind: "box"; box: Bounds } | { kind: "region"; boundary: Pick<Boundary, "id" | "country"> & Bounds };
 
-// the outlines of several regions together, for a selection averaged as one area; the previous outline stays
-// until the new one has loaded
 export function useOutlines(boundaries: readonly Pick<Boundary, "id" | "country">[]): Ring[] | null {
   const [loaded, setLoaded] = useState<Ring[] | null>(null);
   const key = boundaries.map((b) => b.id).join("|");
@@ -36,7 +34,6 @@ export function useOutline(area: Area | null): Ring[] | null {
     let active = true;
     loadOutline(boundary).then(
       (rings) => active && setLoaded({ id: boundary.id, rings }),
-      // no outline file: the bounds still show where the region is
       () => active && setLoaded({ id: boundary.id, rings: boxRings(boundary) }),
     );
     return () => {

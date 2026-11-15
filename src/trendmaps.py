@@ -55,8 +55,6 @@ def anomalies(values: np.ndarray) -> tuple[np.ndarray, int]:
 
 
 def cell_stats(values: np.ndarray, years: np.ndarray, slope: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    # per cell: scatter of the annual values around the Sen line (slope per decade), and whether one jump
-    # explains the years better than the line
     t = ((years - years[0]) / 10).astype(np.float32)[:, None, None]
     resid = values - slope[None] * t
     with warnings.catch_warnings():
@@ -64,7 +62,6 @@ def cell_stats(values: np.ndarray, years: np.ndarray, slope: np.ndarray) -> tupl
         resid = resid - np.nanmedian(resid, axis=0)
         sigma = np.nanstd(resid, axis=0, ddof=2).astype(np.float32)
         x = values - np.nanmean(values, axis=0)
-    # step or trend: does one jump between two flat levels beat the line by BIC (as insights.step_or_trend)?
     n = values.shape[0]
     rss_line = np.nansum(resid**2, axis=0)
     total = np.nansum(x**2, axis=0)
@@ -80,7 +77,6 @@ def cell_stats(values: np.ndarray, years: np.ndarray, slope: np.ndarray) -> tupl
 
 
 def clusters(slope: np.ndarray, sig: np.ndarray) -> dict[str, np.ndarray]:
-    # connected areas of significant cells sharing a sign (wrapping at 180 degrees), largest first
     area_cell = np.cos(np.deg2rad(dataset.LAT))[:, None] * CELL_KM2 * np.ones_like(slope)
     labels = np.zeros(slope.shape, dtype=np.int16)
     rows = []
@@ -116,7 +112,6 @@ def clusters(slope: np.ndarray, sig: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def build(key: str) -> dict[str, np.ndarray]:
-    # everything the trend map shows for the whole record, at the sizes the API sends
     annual = dataset.annual(key)
     lat, lon, values = dataset.LAT, dataset.LON, annual.values
     slope, p, _q, sig = gridtrends.compute_grid(values, annual.years)
@@ -147,7 +142,6 @@ def build(key: str) -> dict[str, np.ndarray]:
 
 
 def build_wind(years: np.ndarray | None = None) -> dict[str, np.ndarray]:
-    # mean 10 m wind vector over the record (or the given years), for the particle layer
     u, v = (dataset.annual(key) for key in WIND_PARTS)
     common, iu, iv = np.intersect1d(u.years, v.years, return_indices=True)
     if years is not None:
@@ -186,8 +180,6 @@ def read(name: str, folder: str = "trends") -> dict[str, np.ndarray] | None:
     return products if int(products.get("version", 0)) == VERSION else None
 
 
-# --- products across variables, for the scanner, the trust checks and ENSO (insights/*.npz) ---
-
 # independent products of the same quantity, compared over the cells both cover
 PARTNERS = {
     "merra2_t2m": "gldas_tair",
@@ -200,7 +192,6 @@ PARTNERS = {
 
 
 def nino34() -> tuple[np.ndarray, np.ndarray]:
-    # annual mean SST over the Nino 3.4 box, as an anomaly from its mean
     annual = dataset.annual("sst")
     south, north, west, east = NINO34
     rows = (dataset.LAT >= south) & (dataset.LAT <= north)
@@ -211,7 +202,6 @@ def nino34() -> tuple[np.ndarray, np.ndarray]:
 
 
 def region_matrix():
-    # sparse (regions x cells) weights frac * cos(lat), from regions/weights.parquet
     from scipy import sparse
 
     index = dataset.regions()
@@ -223,7 +213,6 @@ def region_matrix():
 
 
 def region_coverage(matrix, values: np.ndarray) -> np.ndarray:
-    # share of each region's area with data in any year
     any_data = np.isfinite(values).any(axis=0).ravel().astype(np.float64)
     total = np.asarray(matrix.sum(axis=1)).ravel()
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -231,7 +220,6 @@ def region_coverage(matrix, values: np.ndarray) -> np.ndarray:
 
 
 def region_series(matrix, values: np.ndarray, land: np.ndarray | None = None) -> np.ndarray:
-    # area-weighted mean per region and year over the cells with data (land: only these cells)
     flat = values.reshape(values.shape[0], -1).astype(np.float64)
     finite = np.isfinite(flat)
     if land is not None:
@@ -243,8 +231,6 @@ def region_series(matrix, values: np.ndarray, land: np.ndarray | None = None) ->
 
 
 def build_insights(keys: list[str]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
-    # cells: per variable slope, p, FDR flag, scatter and step flag on the 1 degree grid, plus the Nino 3.4 index;
-    # regions: per variable the annual mean series of every Natural Earth region
     cells: dict[str, np.ndarray] = {"version": np.array(VERSION), "keys": np.array(keys)}
     ids, matrix = region_matrix()
     regions: dict[str, np.ndarray] = {"version": np.array(VERSION), "ids": np.array(ids)}
@@ -272,7 +258,6 @@ def build_insights(keys: list[str]) -> tuple[dict[str, np.ndarray], dict[str, np
         years, index = nino34()
         cells["nino:years"], cells["nino:index"] = years.astype(np.int16), index
     return cells, regions
-
 
 
 def read_local(key: str) -> dict[str, np.ndarray]:

@@ -1,5 +1,4 @@
-// translucent fill over an area: the rings are painted into a canvas that covers their bounding box, which is laid
-// on the globe as a patch of sphere (the same way the detail tiles are), so the fill follows the curvature
+// translucent fill over an area, painted into a canvas laid on the globe as a patch of sphere
 
 import { useEffect, useMemo } from "react";
 import { CanvasTexture, SphereGeometry } from "three";
@@ -51,11 +50,13 @@ function buildPatch(rings: Ring[]): Patch | null {
   // even-odd, so holes (lakes, enclaves) stay clear
   ctx.fill("evenodd");
 
-  const segments = (deg: number, max: number) => Math.min(max, Math.max(4, Math.ceil(deg / 2)));
+  // half a degree per facet: a flat facet sags below the sphere in its middle, and a coarser one dips
+  // under the detail tiles (radius 1.0003), which then cover the fill in a diamond pattern
+  const segments = (deg: number, max: number) => Math.min(max, Math.max(4, Math.ceil(deg * 2)));
   const geometry = new SphereGeometry(
     1,
-    segments(span, 128),
-    segments(height, 64),
+    segments(span, 360),
+    segments(height, 180),
     (west + 180) * DEG,
     span * DEG,
     (90 - north) * DEG,

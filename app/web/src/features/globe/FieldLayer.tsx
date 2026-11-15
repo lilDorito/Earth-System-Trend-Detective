@@ -42,13 +42,11 @@ const fragmentShader = (bands: number) => `
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
   }
 
-  // place: first texel's lon/lat and the texel spacing in degrees; longitude wraps through the texture
   vec4 sampleField(sampler2D field, vec2 size, vec4 place, vec2 lonLat) {
     vec2 node = (lonLat - place.xy) / place.zw;
     return texture2D(field, (node + 0.5) / size);
   }
 
-  // one dot of a lat/lon lattice with this spacing, painted on the surface (about 1.3 px across at the centre)
   float dotAt(vec2 lonLat, float spacing) {
     float c = max(cos(radians(lonLat.y)), 0.05);
     float sx = spacing * exp2(floor(log2(1.0 / c) + 0.5));
@@ -64,7 +62,6 @@ const fragmentShader = (bands: number) => `
     return max(dotAt(lonLat, fine * 2.0), dotAt(lonLat, fine) * (1.0 - fract(level)));
   }
 
-  // cell: value, mask (1 shown, 0 muted), coverage (1 data, 0 none), significance
   vec3 shade(vec4 cell, vec4 range, float stipple, int offset, float dots, float polar, vec3 ground) {
     float t = clamp((cell.r - range.x) / max(range.y - range.x, 1e-6) * 2.0 - 1.0, -1.0, 1.0);
     float band = (t + 1.0) * 0.5 * ${bands}.0;
@@ -72,12 +69,9 @@ const fragmentShader = (bands: number) => `
     bool isobars = range.w > 0.5;
     float edge = floor(band + 0.5);
     float gap = abs(band - edge) / max(fwidth(band), 1e-5);
-    // isobars on every other band edge, a little heavier than the band lines
     bool onEdge = edge >= 1.0 && edge <= ${bands - 1}.0 && (!isobars || mod(edge, 2.0) < 0.5);
     float line = onEdge ? (1.0 - smoothstep(isobars ? 0.7 : 0.4, isobars ? 1.7 : 1.2, gap)) * polar : 0.0;
-    // change palettes fade out near zero
     float strength = range.z > 0.0 ? smoothstep(0.0, range.z, abs(t)) : 1.0;
-    // values have no zero to fade around and read better with a fuller fill
     float fillAlpha = isobars ? 0.18 : (range.z > 0.0 ? opacity * strength : min(1.0, opacity + 0.2));
     vec3 lineColor = isobars ? mix(fill, vec3(1.0), 0.2) : fill * 0.55;
     float lineAlpha = line * (isobars ? 0.95 : min(1.0, opacity + 0.15)) * max(strength, isobars ? 0.35 : 0.0);
@@ -128,7 +122,6 @@ const fragmentShader = (bands: number) => `
     vec4 to = sampleField(fieldTo, sizeTo, placeTo, lonLat);
     to.b = min(to.b, cover);
     vec3 color;
-    // settled (no transition running): one field, one shade, which is nearly every frame
     if (blend >= 1.0) {
       color = shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground);
     } else {
@@ -139,11 +132,9 @@ const fragmentShader = (bands: number) => `
         ? mix(shade(from, rangeFrom, stippleFrom, 0, dots, polar, ground), shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground), blend)
         : shade(mix(from, to, blend), rangeTo, stippleTo, ${bands}, dots, polar, ground);
     }
-    // fades from the plain imagery, so the hand-over to the Earth underneath is seamless
     gl_FragColor = vec4(mix(rgb, color, presence), 1.0);
   }`;
 
-// how a field is coloured: BANDS colours spread from lo to hi
 export type FieldLook = {
   palette: Rgb[];
   lo: number;
@@ -178,7 +169,6 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 const sameShape = (a: FieldGrid, b: FieldGrid) =>
   a.width === b.width && a.height === b.height && a.origin.every((v, i) => v === b.origin[i]);
 
-// same colours for the same numbers, so a change of data can morph
 const sameScale = (a: FieldLook, b: FieldLook) =>
   a.palette === b.palette && a.lo === b.lo && a.hi === b.hi && a.fade === b.fade && a.isobars === b.isobars;
 
@@ -221,7 +211,6 @@ export default function FieldLayer({
   const presence = useRef({ value: 0, started: false });
   const frames = useRef<Frames | null>(null);
   const [landMask, setLandMask] = useState<Texture | null>(null);
-  // built the first time an ocean or land variable needs it, not for every visit to the map
   useEffect(() => {
     if (domain === "global" || landMask) return;
     let active = true;
@@ -241,7 +230,6 @@ export default function FieldLayer({
     if (!f) {
       frames.current = { from: makeSlot(field, look), to: makeSlot(field, look), quantity, crossfade: false, t: 1, started: true };
     } else if (f.to.field === field && f.quantity === quantity && sameScale(f.to.look, look)) {
-      // only stippling changed: no transition needed
       f.to.look = look;
     } else if (transition <= 0) {
       refill(f.to, field, look);
@@ -334,7 +322,6 @@ export default function FieldLayer({
     const u = material.uniforms;
     u.earth.value = earth;
     u.landMask.value = landMask;
-    // until the mask has loaded, fall back to the data coverage
     u.domain.value = landMask ? (domain === "ocean" ? 1 : domain === "land" ? 2 : 0) : 0;
     u.fieldFrom.value = f.from.texture;
     u.fieldTo.value = f.to.texture;
@@ -353,7 +340,6 @@ export default function FieldLayer({
     u.crossfade.value = f.crossfade;
     u.opacity.value = opacity;
     u.presence.value = ease(p.value);
-    // the surface point nearest the camera is distance - 1 away
     const fov = "fov" in camera ? ((camera.fov as number) * Math.PI) / 180 : 0.8;
     const unitsPerPx = (2 * Math.max(camera.position.length() - 1, 0.01) * Math.tan(fov / 2)) / size.height;
     u.degPerPx.value = (unitsPerPx * 180) / Math.PI;

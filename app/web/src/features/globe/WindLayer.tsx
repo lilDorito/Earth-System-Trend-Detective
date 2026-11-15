@@ -22,7 +22,6 @@ type WindLayerProps = {
   transition?: number;
 };
 
-// bilinear, wrapping in longitude; NaN where a corner has no data
 function sampler(u: ArrayLike<number | null>, v: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry) {
   const U = Float32Array.from(u as ArrayLike<number | null>, (x) => x ?? NaN);
   const V = Float32Array.from(v as ArrayLike<number | null>, (x) => x ?? NaN);
@@ -62,7 +61,6 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
     const vertices = COUNT * (TRAIL - 1) * 2;
     const positions = new Float32Array(vertices * 3);
     const colors = new Float32Array(vertices * 4);
-    // a pale blue-white; only the alpha changes per frame
     for (let k = 0; k < vertices; k++) colors.set([0.92, 0.95, 1, 0], k * 4);
     const geometry = new BufferGeometry();
     geometry.setAttribute("position", new BufferAttribute(positions, 3));
@@ -85,14 +83,12 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
   const setPoint = (p: number, t: number, lon: number, lat: number) => {
     const c = Math.cos(lat * DEG);
     const o = (p * TRAIL + t) * 3;
-    // same convention as latLonToVector
     state.trail[o] = -RADIUS * c * Math.cos((lon + 180) * DEG);
     state.trail[o + 1] = RADIUS * Math.sin(lat * DEG);
     state.trail[o + 2] = RADIUS * c * Math.sin((lon + 180) * DEG);
   };
 
   const spawn = (p: number) => {
-    // uniform over the sphere, then wait for a spot with wind
     state.lat[p] = Math.asin(2 * Math.random() - 1) / DEG;
     state.lon[p] = Math.random() * 360 - 180;
     state.age[p] = 0;
@@ -136,7 +132,6 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
       state.lat[p] += wv * SPEED * dt;
       if (state.lon[p] > 180) state.lon[p] -= 360;
       else if (state.lon[p] < -180) state.lon[p] += 360;
-      // the newest point follows the particle; older points step back in time
       if (shift) state.trail.copyWithin(p * TRAIL * 3, p * TRAIL * 3 + 3, (p + 1) * TRAIL * 3);
       setPoint(p, TRAIL - 1, state.lon[p], state.lat[p]);
     }
@@ -144,7 +139,6 @@ export default function WindLayer({ u, v, nlat, nlon, grid, visible = true, tran
     const fade = presence.current;
     for (let p = 0; p < COUNT; p++) {
       const life = state.life[p], age = state.age[p];
-      // fade in and out over the streak's life, brighter in stronger wind
       const alive = Math.min(1, age / 0.5, (life - age) / 0.5) * Math.min(1, 0.4 + state.speed[p] / 6) * fade;
       for (let t = 0; t < TRAIL - 1; t++) {
         const s = (p * (TRAIL - 1) + t) * 2;

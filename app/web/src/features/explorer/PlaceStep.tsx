@@ -1,4 +1,4 @@
-// step 1: place picker
+// place picker
 
 import { X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -36,7 +36,6 @@ export default function PlaceStep() {
 
   return (
     <Section
-      index={1}
       title="Place"
       aside={coords && <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{coords}</span>}
     >
@@ -50,7 +49,6 @@ export default function PlaceStep() {
         aria-label="Place"
       />
       {boundaries.length > 1 && (
-        // regions picked in "Several" mode on the globe; each can be taken out again
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {boundaries.map((b) => (
             <li key={b.id}>

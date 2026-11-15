@@ -1,5 +1,4 @@
-# insight endpoints on the precomputed products (insights/*.npz, trends/*.npz): what changes at a place across
-# all variables, how far a trend can be trusted, process fingerprints and opposite-trend areas
+# insight endpoints on the precomputed products: scanner, trust checks, fingerprints, opposite trends
 
 from functools import lru_cache
 from types import SimpleNamespace
@@ -40,7 +39,6 @@ def _regions() -> tuple[dict, dict[str, int]]:
 
 
 def _clean(value):
-    # numpy and NaN to JSON
     if isinstance(value, dict):
         return {k: _clean(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -62,8 +60,6 @@ def _info(key: str) -> dict:
 
 
 def _place(lat, lon, region, south, north, west, east) -> tuple[str, object]:
-    # which kind of place a request names: a point, a Natural Earth region (precomputed series), or an area
-    # given as the share of each 1 degree cell inside it: a box or a sea (Natural Earth marine areas)
     if region and region.startswith("sea-"):
         grid = SimpleNamespace(lat=dataset.LAT, lon=dataset.LON)
         return "box", trendmap._sea_fractions(region, grid)[1]
@@ -134,8 +130,9 @@ def scan(
         else:
             # a box has no precomputed series: the area-weighted mean slope and scatter of its cells. The scatter of
             # a regional mean is smaller than its cells', so this effect size errs low
-            w = _area_weights(place) * np.isfinite(slope)
-            if w.sum() == 0:
+            area = _area_weights(place)
+            w = area * np.isfinite(slope)
+            if w.sum() < MIN_COVERAGE * area.sum():
                 continue
             mean = lambda a: float(np.nansum(a * w) / w.sum())  # noqa: E731
             share_sig = mean(sig.astype(float))
@@ -145,19 +142,16 @@ def scan(
         rows.append(_info(key) | row)
     if not rows:
         raise HTTPException(422, "No variable has data here")
-    # Benjamini-Hochberg across the variables scanned
     ps = np.array([r["p"] if r["p"] is not None else np.nan for r in rows], dtype=float)
     q = gridtrends.fdr_bh(ps)
     for r, qv in zip(rows, q):
         r["q"] = None if not np.isfinite(qv) else float(qv)
         r["significant"] = r["q"] < 0.05 if r["q"] is not None else r.get("share_significant", 0) >= 0.5
-    # significant trends first, each group by the size of the effect
     rows.sort(key=lambda r: (not r["significant"], -abs(r["effect"] or 0)))
     return _clean({"kind": kind, "approximate": kind == "box", "variables": rows})
 
 
 def _series(variable: str, kind: str, place) -> tuple[np.ndarray, np.ndarray, dict]:
-    # annual series at a place: region series from the precomputed file, points and boxes from the annual grid
     if kind == "region":
         series, index = _regions()
         if f"{variable}:series" not in series:
@@ -171,7 +165,6 @@ def _series(variable: str, kind: str, place) -> tuple[np.ndarray, np.ndarray, di
 
 
 def _agreement(variable: str, kind: str, place, own: dict) -> dict | None:
-    # the same quantity from an independent product, over the cells both cover
     partner = trendmaps.PARTNERS.get(variable)
     if not partner:
         return None
@@ -227,8 +220,6 @@ def diagnose(
     west: float | None = PlaceQuery["west"],
     east: float | None = PlaceQuery["east"],
 ):
-    # can this trend be trusted? step changes, start-year robustness, an independent product, ENSO, and how many
-    # years a non-significant trend would still need
     kind, place = _place(lat, lon, region, south, north, west, east)
     try:
         info = _info(variable)
@@ -305,7 +296,6 @@ def hotspots(scenario: str):
 
 @router.get("/divergence")
 def divergence(variable: str):
-    # the largest connected areas where the trend is significantly rising, and where it is falling
     trendmap._range(variable, None, None)
     pre = trendmap._pre(variable)
     if pre is None or "cluster_labels" not in pre:

@@ -1,5 +1,4 @@
-// insight sections of the point and region panels: can the trend be trusted, when would it be significant,
-// and what else changes at the same place
+// insight sections of the point and region panels: trust checks, significance, what else changes there
 
 import { useEffect, useState } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
@@ -97,7 +96,6 @@ function TrustChecks({ d }: { d: Diagnosis }) {
   );
 }
 
-// p-value of the record ending each year, on a log scale with the 0.05 line
 function Growth({ d }: { d: Diagnosis }) {
   const option: EChartsOption = {
     ...baseOption,
@@ -257,7 +255,6 @@ function Pending({ loading, error }: { loading: boolean; error: string | null })
   return error ? <p className="text-xs text-warning">{error}</p> : null;
 }
 
-// the trust checks, significance and scan for the variable on the map at a place
 export default function Insights({ variable, place }: { variable: string; place: InsightPlace }) {
   const key = placeKey(place);
   const diagnosis = useLoad(`${variable}|${key}`, () => api.insightDiagnose(variable, place));

@@ -1,5 +1,4 @@
-# diagnostics of an annual series: effect size, step changes, start-year robustness, how long until a
-# trend is significant, every start/end window, and how much of a trend ENSO explains
+# diagnostics of an annual series: effect size, jumps, start-year robustness, windows, ENSO
 
 import warnings
 
@@ -32,7 +31,6 @@ def mk_p(values: np.ndarray) -> float:
 
 
 def residual_stats(years: np.ndarray, values: np.ndarray) -> tuple[float, float]:
-    # year-to-year scatter around the Sen line and its lag-1 autocorrelation
     slope, intercept = sen(years, values)
     resid = values - (intercept + slope * (years - years[0]))
     sigma = float(np.std(resid, ddof=2)) if len(resid) > 2 else float("nan")
@@ -41,7 +39,6 @@ def residual_stats(years: np.ndarray, values: np.ndarray) -> tuple[float, float]
 
 
 def pettitt(values: np.ndarray) -> dict:
-    # Pettitt (1979): the most likely single shift in the median, with an approximate p; shift in the series' units
     n = len(values)
     signs = np.sign(values[:, None] - values[None, :])
     u = np.array([signs[: t + 1, t + 1 :].sum() for t in range(n - 1)])
@@ -52,8 +49,7 @@ def pettitt(values: np.ndarray) -> dict:
 
 
 def step_or_trend(years: np.ndarray, values: np.ndarray, slope: float, intercept: float) -> dict:
-    # does one jump between two flat levels fit better than a straight line? BIC, with the break year as an
-    # extra parameter; a jump that wins means the "trend" may be a shift (a new sensor, model or forcing)
+    # does one jump between two flat levels fit better than a line? BIC, the break year counted as a parameter
     n = len(values)
     rss_line = float(np.sum((values - (intercept + slope * (years - years[0]))) ** 2))
     best = min(
@@ -72,8 +68,6 @@ def step_or_trend(years: np.ndarray, values: np.ndarray, slope: float, intercept
 
 
 def years_needed(slope: float, sigma: float, r1: float, n: int) -> int | None:
-    # record length at which this slope would reach p < 0.05 (OLS standard error, inflated for autocorrelation);
-    # None when the slope is zero or the scatter unknown
     if not slope or not np.isfinite(sigma) or sigma <= 0:
         return None
     inflate = np.sqrt((1 + max(r1, 0)) / (1 - min(max(r1, 0), 0.9)))
@@ -85,7 +79,6 @@ def years_needed(slope: float, sigma: float, r1: float, n: int) -> int | None:
 
 
 def windows(years: np.ndarray, values: np.ndarray) -> dict:
-    # MK p and Sen slope for every start/end pair at least MIN_YEARS long: how much the choice of window matters
     n = len(years)
     p = np.full((n, n), np.nan)
     slope = np.full((n, n), np.nan)
@@ -97,7 +90,6 @@ def windows(years: np.ndarray, values: np.ndarray) -> dict:
 
 
 def quick(years: np.ndarray, values: np.ndarray) -> dict | None:
-    # the scanner's per-variable numbers: Sen slope per decade, MK p, scatter, effect size, jump; None if too short
     keep = np.isfinite(values)
     years, values = years[keep].astype(np.float64), values[keep].astype(np.float64)
     if len(years) < MIN_YEARS:
@@ -127,7 +119,6 @@ def diagnose(years: np.ndarray, values: np.ndarray, nino: tuple[np.ndarray, np.n
     step = pettitt(values - (intercept + slope * (years - years[0])))
     jump = step_or_trend(years, values, slope, intercept)
 
-    # start-year robustness: Sen slope and p when the record starts 1..5 years later
     shifted = []
     for k in range(1, min(ROBUST_SHIFTS, n - MIN_YEARS) + 1):
         shifted.append({"start": int(years[k]), "slope": sen(years[k:], values[k:])[0], "p": mk_p(values[k:])})
@@ -135,7 +126,6 @@ def diagnose(years: np.ndarray, values: np.ndarray, nino: tuple[np.ndarray, np.n
     spread = max((abs(s["slope"] - slope) for s in shifted), default=0.0)
     robust = same_sign and (not shifted or spread <= 0.5 * abs(slope))
 
-    # p against record length, ending each year from the MIN_YEARS-th on
     growth = [{"end": int(years[b]), "p": mk_p(values[: b + 1])} for b in range(MIN_YEARS - 1, n)]
 
     win = windows(years, values)
@@ -167,7 +157,6 @@ def diagnose(years: np.ndarray, values: np.ndarray, nino: tuple[np.ndarray, np.n
 
 
 def enso(years: np.ndarray, values: np.ndarray, nino_years: np.ndarray, nino: np.ndarray) -> dict | None:
-    # least squares on year and the annual Nino 3.4 index together: the trend left once ENSO is accounted for
     common, iy, ino = np.intersect1d(years, nino_years, return_indices=True)
     if len(common) < MIN_YEARS:
         return None

@@ -67,7 +67,6 @@ export const MAP_CASES: MapCase[] = [
   },
 ];
 
-// sets the trend map up for a case; the map page loads the variable when it mounts
 export async function openCase(c: MapCase) {
   const store = useTrendMapStore.getState();
   useTrendMapStore.setState({ showTrend: true, view: "trend", hotspot: null, picked: null, selected: null });

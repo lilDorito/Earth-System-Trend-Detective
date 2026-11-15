@@ -1,4 +1,4 @@
-// step 2: variable picker, grouped into atmosphere, land and ocean
+// variable picker, grouped into atmosphere, land and ocean
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -60,7 +60,7 @@ export default function VariableStep() {
   );
 
   return (
-    <Section index={2} title="Variable" aside={typePicker}>
+    <Section title="Variable" aside={typePicker}>
       <div role="radiogroup" aria-label="Variable" className="divide-y rounded-md border">
         {variables.length === 0
           ? Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="m-2 h-5" />)

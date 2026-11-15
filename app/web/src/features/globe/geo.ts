@@ -4,7 +4,6 @@ import { Vector3 } from "three";
 
 const DEG = Math.PI / 180;
 
-// exact inverse of latLonToVector
 export function vectorToLatLon(v: Vector3): { lat: number; lon: number } {
   const n = v.clone().normalize();
   const lat = 90 - Math.acos(n.y) / DEG;

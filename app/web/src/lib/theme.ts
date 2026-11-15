@@ -8,7 +8,7 @@ export type ThemeChoice = "dark" | "marshmallow";
 
 export const PHONE_QUERY = "(max-width: 639px)";
 const STORAGE_KEY = "theme";
-const BAR_COLOR = { dark: "#11151d", marshmallow: "#fbe8ef" }; // the phone browser's address bar
+const BAR_COLOR = { dark: "#11151d", marshmallow: "#fce6e6" }; // the phone browser's address bar
 
 const query = typeof window !== "undefined" ? window.matchMedia(PHONE_QUERY) : null;
 const listeners = new Set<() => void>();

@@ -222,7 +222,8 @@ def frames(
     years = _years(variable, start, end)
     # enough decimals for smooth contours over the data's own spread (pH spans about 0.1)
     spread = np.nanquantile(np.abs(coarse - np.nanmedian(coarse)), 0.98) if np.isfinite(coarse).any() else 1.0
-    decimals = int(np.clip(4 - np.floor(np.log10(max(spread, 1e-9))), 2, 6))
+    # three significant digits of the spread: a thousandth of the range, far below one of the 24 colour bands
+    decimals = int(np.clip(3 - np.floor(np.log10(max(spread, 1e-9))), 1, 6))
     return {
         "kind": kind,
         "start": start,

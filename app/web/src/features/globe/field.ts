@@ -23,9 +23,14 @@ function blur(src: Float32Array, nlat: number, nlon: number) {
   return out;
 }
 
+// rings of empty cells beyond the blurred data that get values; the coverage stops two rings short of
+// that, so what is drawn never interpolates toward an empty cell
+const FILL_RINGS = 3;
+const GROWN = 0.05; // blurred weight above this counts as covered: about two cells past the data
+
 function fillHoles(values: Float32Array, weight: Float32Array, nlat: number, nlon: number) {
   let filled = Uint8Array.from(weight, (w) => (w > 1e-6 ? 1 : 0));
-  for (let pass = 0; pass < 12; pass++) {
+  for (let pass = 0; pass < FILL_RINGS; pass++) {
     const next = Uint8Array.from(filled);
     let changed = false;
     for (let i = 0; i < nlat; i++) {
@@ -72,9 +77,11 @@ export function smoothField(
     weight = blur(weight, nlat, nlon);
   }
   const smooth = weighted.map((v, k) => (weight[k] > 1e-6 ? v / weight[k] : 0));
-  // ocean or land fields are cut by the real coastline in the shader, so the values have to reach
-  // past the coarse cells: empty cells take the mean of their filled neighbours, ring by ring
+  // ocean or land fields are cut by the real coastline in the shader, so values and coverage have to reach
+  // past the coarse cells: empty cells take the mean of their filled neighbours, ring by ring, and the
+  // coverage grows to where the blur reached
   if (extend) fillHoles(smooth, weight, nlat, nlon);
+  const covered = extend ? Float32Array.from(weight, (w) => (w > GROWN ? 1 : 0)) : coverage;
   // poleward from 60 degrees in each hemisphere; a row without data (a satellite pole hole) takes the
   // mean of the last row with data, so values cannot fan out by longitude around the pole
   const rows = Array.from({ length: nlat }, (_, i) => i);
@@ -99,7 +106,7 @@ export function smoothField(
   }
   // near the poles a row's coverage is its mean: a partly covered polar row would otherwise cut
   // wedges into the field, all meeting at the pole
-  const shown = Float32Array.from(coverage);
+  const shown = Float32Array.from(covered);
   for (let i = 0; i < nlat; i++) {
     if (Math.abs(grid.lat0 + i * grid.dlat) < 80) continue;
     const row = shown.subarray(i * nlon, (i + 1) * nlon);
@@ -175,7 +182,54 @@ export function fieldGrid(
   };
 }
 
-export type FieldGrid = ReturnType<typeof fieldGrid>;
+export type FieldGrid = ReturnType<typeof fieldGrid> & { half?: Uint16Array };
+
+// a field is prepared once per data array and settings: replaying the timeline or switching back to a
+// variable reuses it, half-float texels included. A prepared field is about 6 MB, so only the most
+// recent few are kept
+const prepared = new WeakMap<object, Map<string, FieldGrid>>();
+const recent: [object, string][] = [];
+const KEEP = 8;
+
+export function prepareField(
+  values: ArrayLike<number | null>,
+  mask: ArrayLike<number> | null,
+  sig: ArrayLike<number> | null,
+  nlat: number,
+  nlon: number,
+  grid: GridGeometry,
+  extend: boolean,
+): FieldGrid {
+  let byOptions = prepared.get(values as object);
+  if (!byOptions) prepared.set(values as object, (byOptions = new Map()));
+  // mask and sig are arrays from the store, so their identity is stable for the same data
+  const key = `${extend}|${ids(mask)}|${ids(sig)}|${grid.lat0}|${grid.dlat}`;
+  let field = byOptions.get(key);
+  if (!field) {
+    field = fieldGrid(smoothField(values, nlat, nlon, grid, extend), mask, sig, nlat, nlon, grid);
+    byOptions.set(key, field);
+    recent.push([values as object, key]);
+    if (recent.length > KEEP) {
+      const [oldValues, oldKey] = recent.shift()!;
+      prepared.get(oldValues)?.delete(oldKey);
+    }
+  }
+  return field;
+}
+
+const arrayIds = new WeakMap<object, number>();
+let nextId = 1;
+function ids(array: object | null) {
+  if (!array) return 0;
+  let id = arrayIds.get(array);
+  if (!id) arrayIds.set(array, (id = nextId++));
+  return id;
+}
+
+export function halfOf(field: FieldGrid): Uint16Array {
+  field.half ??= toHalf(field.data);
+  return field.half;
+}
 
 function toHalf(data: Float32Array) {
   const half = new Uint16Array(data.length);
@@ -183,8 +237,8 @@ function toHalf(data: Float32Array) {
   return half;
 }
 
-export function createFieldTexture({ data, width, height }: FieldGrid) {
-  const texture = new DataTexture(toHalf(data), width, height, RGBAFormat, HalfFloatType);
+export function createFieldTexture(field: FieldGrid) {
+  const texture = new DataTexture(halfOf(field), field.width, field.height, RGBAFormat, HalfFloatType);
   texture.magFilter = texture.minFilter = LinearFilter;
   texture.wrapS = RepeatWrapping;
   texture.wrapT = ClampToEdgeWrapping;
@@ -193,7 +247,7 @@ export function createFieldTexture({ data, width, height }: FieldGrid) {
 }
 
 // refill in place, so stepping through years never reallocates GPU memory
-export function updateFieldTexture(texture: DataTexture, data: Float32Array) {
-  texture.image.data = toHalf(data);
+export function updateFieldTexture(texture: DataTexture, field: FieldGrid) {
+  texture.image.data = halfOf(field);
   texture.needsUpdate = true;
 }

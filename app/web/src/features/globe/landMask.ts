@@ -2,36 +2,45 @@
 // longitude/latitude layout as the Earth texture; cuts ocean-only fields at the real coastline
 // instead of at the edge of their coarse grid cells
 
-import { geoEquirectangular, geoPath } from "d3-geo";
-import { feature } from "topojson-client";
-import type { GeometryCollection, Topology } from "topojson-specification";
-import { CanvasTexture, LinearFilter, RepeatWrapping, ClampToEdgeWrapping, type Texture } from "three";
+import {
+  ClampToEdgeWrapping,
+  DataTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  RedFormat,
+  RepeatWrapping,
+  UnsignedByteType,
+  type Texture,
+} from "three";
 
-const WIDTH = 8192;
+// about 10 km per pixel, finer than the coastline at any zoom the overlay is used at; one byte per pixel
+// with mipmaps is 11 MB on the GPU, against 170 MB for an 8k RGBA canvas
+const WIDTH = 4096;
 
 let cached: Promise<Texture> | null = null;
 
+function rasterise(): Promise<Uint8Array> {
+  // drawn in a worker, so the page does not freeze for the second it takes
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./landMask.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e: MessageEvent<Uint8Array>) => {
+      resolve(e.data);
+      worker.terminate();
+    };
+    worker.onerror = (e) => {
+      reject(e);
+      worker.terminate();
+    };
+    worker.postMessage({ width: WIDTH });
+  });
+}
+
 export function loadLandMask(): Promise<Texture> {
-  cached ??= import("world-atlas/land-50m.json").then(({ default: source }) => {
-    const topology = source as unknown as Topology<{ land: GeometryCollection }>;
-    const land = feature(topology, topology.objects.land);
-    const canvas = document.createElement("canvas");
-    canvas.width = WIDTH;
-    canvas.height = WIDTH / 2;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const projection = geoEquirectangular()
-      .scale(WIDTH / (2 * Math.PI))
-      .translate([WIDTH / 2, WIDTH / 4])
-      .precision(0.1);
-    ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    geoPath(projection, ctx)(land);
-    ctx.fill();
-    const texture = new CanvasTexture(canvas);
-    texture.generateMipmaps = false;
-    texture.minFilter = texture.magFilter = LinearFilter;
+  cached ??= rasterise().then((mask) => {
+    const texture = new DataTexture(mask, WIDTH, WIDTH / 2, RedFormat, UnsignedByteType);
+    texture.generateMipmaps = true;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
     texture.wrapS = RepeatWrapping;
     texture.wrapT = ClampToEdgeWrapping;
     texture.needsUpdate = true;

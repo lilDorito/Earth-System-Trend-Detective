@@ -6,7 +6,7 @@ import { Vector2, Vector3, Vector4, type DataTexture, type Mesh, type Texture } 
 import type { GridGeometry } from "@/api/types";
 import { BANDS, type Rgb } from "@/features/trendmap/styles";
 import { loadLandMask } from "./landMask";
-import { createFieldTexture, fieldGrid, smoothField, updateFieldTexture, type FieldGrid } from "./field";
+import { createFieldTexture, prepareField, updateFieldTexture, type FieldGrid } from "./field";
 
 const vertexShader = `
   varying vec3 vDir;
@@ -113,24 +113,32 @@ const fragmentShader = (bands: number) => `
     // lifted darks: forests and deep sea no longer crush to black, so land without data still reads as land
     float grey = clamp(pow(lum, 0.6) * 0.85 + 0.08, 0.0, 1.0);
     vec3 ground = vec3(grey);
-    float dots = stippleDots(lonLat);
+    // the dot lattice costs a few transcendental calls per pixel, so only when something is stippled
+    float dots = stippleFrom + stippleTo > 0.0 ? stippleDots(lonLat) : 0.0;
     // all meridians meet at a pole, so any band line crossing a nearly flat polar field becomes a spoke
     float polar = smoothstep(88.5, 85.5, abs(lonLat.y));
-
-    vec4 from = sampleField(fieldFrom, sizeFrom, placeFrom, lonLat);
-    vec4 to = sampleField(fieldTo, sizeTo, placeTo, lonLat);
-    // ocean or land variables follow the real coastline, not the edge of their coarse cells
+    // ocean or land variables follow the real coastline: the data's coverage (grown past the coast on the
+    // CPU) is cut by the mask, so real gaps in the data stay empty
+    float cover = 1.0;
     if (domain > 0.5) {
       float land = textureGrad(landMask, uv, dx, dy).r;
-      float cover = domain < 1.5 ? 1.0 - land : land;
-      from.b = cover;
-      to.b = cover;
+      cover = domain < 1.5 ? 1.0 - land : land;
     }
 
-    // same quantity and scale: the values morph, so contours move; otherwise the two pictures fade
-    vec3 color = crossfade
-      ? mix(shade(from, rangeFrom, stippleFrom, 0, dots, polar, ground), shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground), blend)
-      : shade(mix(from, to, blend), rangeTo, stippleTo, ${bands}, dots, polar, ground);
+    vec4 to = sampleField(fieldTo, sizeTo, placeTo, lonLat);
+    to.b = min(to.b, cover);
+    vec3 color;
+    // settled (no transition running): one field, one shade, which is nearly every frame
+    if (blend >= 1.0) {
+      color = shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground);
+    } else {
+      vec4 from = sampleField(fieldFrom, sizeFrom, placeFrom, lonLat);
+      from.b = min(from.b, cover);
+      // same quantity and scale: the values morph, so contours move; otherwise the two pictures fade
+      color = crossfade
+        ? mix(shade(from, rangeFrom, stippleFrom, 0, dots, polar, ground), shade(to, rangeTo, stippleTo, ${bands}, dots, polar, ground), blend)
+        : shade(mix(from, to, blend), rangeTo, stippleTo, ${bands}, dots, polar, ground);
+    }
     // fades from the plain imagery, so the hand-over to the Earth underneath is seamless
     gl_FragColor = vec4(mix(rgb, color, presence), 1.0);
   }`;
@@ -179,7 +187,7 @@ function makeSlot(field: FieldGrid, look: FieldLook): Slot {
 }
 
 function refill(slot: Slot, field: FieldGrid, look: FieldLook) {
-  if (sameShape(slot.field, field)) updateFieldTexture(slot.texture, field.data);
+  if (sameShape(slot.field, field)) updateFieldTexture(slot.texture, field);
   else {
     slot.texture.dispose();
     slot.texture = createFieldTexture(field);
@@ -213,11 +221,17 @@ export default function FieldLayer({
   const presence = useRef({ value: 0, started: false });
   const frames = useRef<Frames | null>(null);
   const [landMask, setLandMask] = useState<Texture | null>(null);
+  // built the first time an ocean or land variable needs it, not for every visit to the map
   useEffect(() => {
-    void loadLandMask().then(setLandMask);
-  }, []);
+    if (domain === "global" || landMask) return;
+    let active = true;
+    void loadLandMask().then((mask) => active && setLandMask(mask));
+    return () => {
+      active = false;
+    };
+  }, [domain, landMask]);
   const field = useMemo(
-    () => fieldGrid(smoothField(values, nlat, nlon, grid, domain !== "global"), mask, sig, nlat, nlon, grid),
+    () => prepareField(values, mask, sig, nlat, nlon, grid, domain !== "global"),
     [values, mask, sig, nlat, nlon, grid, domain],
   );
 
@@ -240,7 +254,7 @@ export default function FieldLayer({
       if (running && !f.crossfade) {
         const k = ease(f.t);
         const shown = f.from.field.data.map((v, i) => v + (f.to.field.data[i] - v) * k);
-        refill(f.from, { ...f.to.field, data: shown }, f.to.look);
+        refill(f.from, { ...f.to.field, data: shown, half: undefined }, f.to.look);
       } else if (!running || f.t > 0.5) {
         [f.from, f.to] = [f.to, f.from];
       }

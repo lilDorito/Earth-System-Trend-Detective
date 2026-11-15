@@ -159,6 +159,8 @@ function IdleSpin({ enabled }: { enabled: boolean }) {
   const invalidate = useThree((s) => s.invalidate);
   const lastInteraction = useRef(-Infinity);
   const speed = useRef(0);
+  const nextFrame = useRef(0);
+  useEffect(() => () => clearTimeout(nextFrame.current), []);
 
   useEffect(() => {
     if (!controls) return;
@@ -191,28 +193,37 @@ function IdleSpin({ enabled }: { enabled: boolean }) {
     if (target === 0 && speed.current < 0.01) speed.current = 0;
     controls.autoRotate = speed.current > 0;
     controls.autoRotateSpeed = SPIN_SPEED * speed.current;
-    // the first spin steps fall below the controls' change threshold, so keep frames coming here
-    if (speed.current > 0 || target > 0) invalidate();
+    // the first spin steps fall below the controls' change threshold, so keep frames coming here; a spin
+    // this slow looks the same at 30 fps and costs the GPU half as much
+    if (speed.current > 0 || target > 0) {
+      clearTimeout(nextFrame.current);
+      nextFrame.current = window.setTimeout(invalidate, 33);
+    }
   });
 
   return null;
 }
 
 // steps the resolution down when frames run slow; gaps between on-demand frames are ignored
+// render resolution: at most 1.5x (smooth fields and imagery look the same at 2x, for 44% fewer pixels to
+// shade), stepping down to 0.75x while frames rendered back to back stay slower than 40 fps
 function AdaptiveResolution() {
   const setDpr = useThree((s) => s.setDpr);
-  const levels = useMemo(() => [1, 1.5, 2].filter((d) => d <= Math.max(1, window.devicePixelRatio)), []);
+  const levels = useMemo(() => [0.75, 1, 1.25, 1.5].filter((d) => d <= Math.max(1, window.devicePixelRatio)), []);
   const level = useRef(levels.length - 1);
   const sample = useRef({ sum: 0, count: 0 });
 
   useEffect(() => setDpr(levels[level.current]), [levels, setDpr]);
 
   useFrame((_, delta) => {
+    // on-demand rendering leaves gaps between frames; only a run of consecutive frames says anything
     if (delta > 0.1 || level.current === 0) return;
     const s = sample.current;
     s.sum += delta;
-    if (++s.count < 90) return;
-    if (s.sum / s.count > 1 / 45) setDpr(levels[--level.current]);
+    if (++s.count < 40) return;
+    if (s.sum / s.count > 1 / 40) {
+      setDpr(levels[--level.current]);
+    }
     s.sum = s.count = 0;
   });
 

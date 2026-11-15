@@ -1,9 +1,10 @@
 // what the globe draws for the current variable, display and year: the field, its look and the extras
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TrendFrames } from "@/api/types";
 import { contourSegments, extrema } from "@/features/globe/contours";
+import { halfOf, prepareField } from "@/features/globe/field";
 import type { FieldLook } from "@/features/globe/FieldLayer";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
 import { FADE, bandColors, styleFor, valueRange } from "./styles";
@@ -38,7 +39,13 @@ export function useTrendLayer() {
     })),
   );
   const style = styleFor(s.meta?.key);
-  const mean = useMemo(() => (s.valueFrames ? periodMean(s.valueFrames) : null), [s.valueFrames]);
+  // transformed once per data set, so each year keeps one array identity and its prepared field is reused
+  const valueMaps = useMemo(() => {
+    if (!s.valueFrames) return null;
+    const log = (frame: (number | null)[]) => frame.map((v) => (v != null && v > 0 ? Math.log10(v) : null));
+    const mean = periodMean(s.valueFrames);
+    return style.log ? { years: s.valueFrames.frames.map(log), mean: log(mean) } : { years: s.valueFrames.frames, mean };
+  }, [s.valueFrames, style.log]);
 
   // built even while hidden, so switching the layer on can fade in at once
   const layer = useMemo(() => {
@@ -47,11 +54,10 @@ export function useTrendLayer() {
     const isobars = !!style.isobars;
     if (s.display === "values") {
       const frames = s.valueFrames;
-      if (!frames || !mean) return null;
+      if (!frames || !valueMaps) return null;
       const index = s.view === "years" ? frames.years.indexOf(s.frameYear) : -1;
       if (s.view === "years" && index < 0) return null;
-      const raw = index >= 0 ? frames.frames[index] : mean;
-      const values = style.log ? raw.map((v) => (v != null && v > 0 ? Math.log10(v) : null)) : raw;
+      const values = index >= 0 ? valueMaps.years[index] : valueMaps.mean;
       const [lo, hi] = valueRange(style, meta.value_range);
       const look: FieldLook = { palette: bandColors(style.signed ? style.change : style.values), lo, hi, fade: 0, isobars, stipple: false };
       return { nlat: frames.n_lat, nlon: frames.n_lon, grid: frames, values, mask: null, sig: null, look, quantity: `${meta.key}:values` };
@@ -71,7 +77,29 @@ export function useTrendLayer() {
     const look: FieldLook = { palette, lo: -limit, hi: limit, fade: FADE, isobars, stipple: s.stipple };
     const mask = s.onlySignificant ? sig : null;
     return { nlat: n_lat, nlon: n_lon, grid: s.grid, values: slope, mask, sig, look, quantity: `${meta.key}:trend` };
-  }, [s, style, mean]);
+  }, [s, style, valueMaps]);
+
+  // the next two years are prepared while the browser is idle, so stepping or playing through the
+  // timeline only uploads a texture that is already built
+  const extend = !!s.meta && s.meta.domain !== "global";
+  useEffect(() => {
+    const frames = s.display === "values" ? s.valueFrames : s.frames;
+    const maps = s.display === "values" ? valueMaps?.years : s.frames?.frames;
+    if (!frames || !maps) return;
+    const at = frames.years.indexOf(s.frameYear);
+    const next = [1, 2].map((d) => maps[(Math.max(at, 0) + d) % maps.length]);
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 120));
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout;
+    let handle = 0;
+    const step = () => {
+      const values = next.shift();
+      if (!values) return;
+      halfOf(prepareField(values, null, null, frames.n_lat, frames.n_lon, frames, extend));
+      handle = idle(step);
+    };
+    handle = idle(step);
+    return () => cancel(handle);
+  }, [s.display, s.frames, s.valueFrames, valueMaps, s.frameYear, extend]);
 
   // sea ice: the edge in the first year against the edge in the year shown (or the period mean)
   const edges = useMemo(() => {

@@ -9,7 +9,7 @@ const SPAN = 22.5;
 const ROWS = 180 / SPAN;
 const COLS = 360 / SPAN;
 const START_DISTANCE = 1.4;
-const MAX_CACHED = 24;
+const MAX_CACHED = 12; // about 10 MB each on the GPU with mipmaps; more than a zoomed-in view needs
 const CHECK_INTERVAL = 0.15;
 const DEG = Math.PI / 180;
 
@@ -119,7 +119,7 @@ export default function DetailTiles() {
         loader.load(`/textures/tiles/${key}.jpg`, (bitmap) => {
           const texture = new Texture(bitmap);
           texture.colorSpace = SRGBColorSpace;
-          texture.anisotropy = 16;
+          texture.anisotropy = 8;
           texture.needsUpdate = true;
           pending.current.push([key, texture]);
           invalidate();

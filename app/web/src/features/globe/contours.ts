@@ -2,12 +2,13 @@
 
 import type { GridGeometry } from "@/api/types";
 import type { Ring } from "./boundaries";
-import { fieldGrid, smoothField } from "./field";
+import { prepareField } from "./field";
 
 type Dense = { values: Float32Array; coverage: Float32Array; width: number; height: number; lon0: number; lat0: number; dlon: number; dlat: number };
 
 function dense(values: ArrayLike<number | null>, nlat: number, nlon: number, grid: GridGeometry): Dense {
-  const field = fieldGrid(smoothField(values, nlat, nlon, grid), null, null, nlat, nlon, grid);
+  // the same cached field the globe draws (or will draw), so an edge costs only the marching squares
+  const field = prepareField(values, null, null, nlat, nlon, grid, false);
   const n = field.width * field.height;
   const out = new Float32Array(n);
   const coverage = new Float32Array(n);

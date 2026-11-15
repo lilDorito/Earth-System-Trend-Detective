@@ -57,6 +57,13 @@
   --radius-xl: 6px;
 }
 
+/* Star Jedi by Boba Fonts (freeware), for the "Made by" title in the secret comet's picture; loaded only when shown */
+@font-face {
+  font-family: "Star Jedi";
+  src: url("/fonts/starjedi.ttf") format("truetype");
+  font-display: swap;
+}
+
 @layer base {
   * {
     @apply border-border;

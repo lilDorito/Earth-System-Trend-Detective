@@ -639,8 +639,19 @@ export default function GlobeCanvas({
             onClick={() => setSecretOpen(false)}
             onKeyDown={(e) => e.key === "Escape" && setSecretOpen(false)}
             autoFocus
-            className="fixed inset-0 z-50 grid cursor-pointer place-items-center bg-black/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-4 bg-black/85 p-4 backdrop-blur-sm sm:gap-6"
           >
+            {/* Star Wars yellow in the Star Jedi face; its lower case letters are the logo's swashed forms */}
+            <motion.span
+              aria-label="Made by"
+              initial={{ opacity: 0, y: -24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -24 }}
+              transition={{ duration: 0.45, delay: 0.1, ease: "easeOut" }}
+              className="font-['Star_Jedi',ui-sans-serif,sans-serif] text-5xl leading-none tracking-wide text-[#ffe81f] [text-shadow:0_0_18px_rgb(255_232_31/0.45)] sm:text-7xl"
+            >
+              made by
+            </motion.span>
             <motion.img
               src="/textures/goyz.jpg"
               alt="The team, as astronauts on the Moon"
@@ -648,7 +659,7 @@ export default function GlobeCanvas({
               animate={{ scale: 1 }}
               exit={{ scale: 0.6 }}
               transition={{ type: "spring", stiffness: 260, damping: 22 }}
-              className="max-h-[85vh] w-auto max-w-full rounded-lg shadow-2xl shadow-black/60"
+              className="max-h-[70vh] w-auto max-w-full rounded-lg shadow-2xl shadow-black/60"
             />
           </motion.button>
         )}

@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair, Flag, Layers, Square, SquareDashed, X } from "lucide-react";
 import type { BBox, Boundary } from "@/api/types";
-import { AdditiveBlending, BackSide, BufferGeometry, CanvasTexture, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
+import { AdditiveBlending, BackSide, BufferGeometry, CanvasTexture, Color, IcosahedronGeometry, Quaternion, Ray, Sphere, SRGBColorSpace, TextureLoader, Vector3, type EventDispatcher, type Intersection, type Mesh, type PerspectiveCamera, type Raycaster, type Texture } from "three";
 import { formatLatLon } from "@/lib/format";
 import { cssVar, usePhoneTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -262,6 +262,54 @@ const marshmallowShader = {
       gl_FragColor = vec4(color, 1.0);
     }`,
 };
+
+// marshmallow sky: white stars vanish on pink, so little sparkles in candy colours instead, drawn opaque-ish
+// (no additive glow) on a shell around the globe like the dark theme's stars
+const CANDY_STAR_COLORS = ["#e2689f", "#d9a400", "#9b4f7d", "#f08cb4", "#e8b830"];
+
+function sparkleTexture(): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); // four-pointed twinkle
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4 - Math.PI / 2;
+    const r = i % 2 ? 7 : 31;
+    ctx.lineTo(32 + r * Math.cos(angle), 32 + r * Math.sin(angle));
+  }
+  ctx.closePath();
+  ctx.fill();
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
+
+function CandyStars({ count = 450 }: { count?: number }) {
+  const [positions, colors] = useMemo(() => {
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const v = new Vector3();
+    const c = new Color();
+    for (let i = 0; i < count; i++) {
+      v.randomDirection().multiplyScalar(70 + Math.random() * 40);
+      v.toArray(pos, i * 3);
+      c.set(CANDY_STAR_COLORS[i % CANDY_STAR_COLORS.length]).toArray(col, i * 3);
+    }
+    return [pos, col];
+  }, [count]);
+  const sparkle = useMemo(sparkleTexture, []);
+  useEffect(() => () => sparkle.dispose(), [sparkle]);
+  return (
+    <points raycast={() => null}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} />
+      </bufferGeometry>
+      <pointsMaterial map={sparkle} vertexColors size={3.6} sizeAttenuation transparent alphaTest={0.3} opacity={0.85} depthWrite={false} toneMapped={false} />
+    </points>
+  );
+}
 
 function MarshmallowEarth({ earth }: { earth: Texture }) {
   const invalidate = useThree((s) => s.invalidate);
@@ -641,7 +689,7 @@ export default function GlobeCanvas({
         <IdleSpin enabled={autoRotate} />
         {/* the theme's sky: deep space, or marshmallow pink on phones, where stars would only look like dust */}
         <color key={sky} attach="background" args={[sky]} />
-        {!phoneTheme && <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />}
+        {phoneTheme ? <CandyStars /> : <Stars radius={100} depth={50} count={1800} factor={3} fade speed={0.3} />}
         <SecretComet onOpen={() => setSecretOpen(true)} />
         <Earth texture={texture} onPick={pick} onClear={onClear} onHover={onHover} snap={snap} />
         {/* the candy globe replaces the imagery, so the sharper satellite tiles are not fetched under it */}

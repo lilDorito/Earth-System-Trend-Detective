@@ -29,9 +29,10 @@ function ThemeSwitch() {
       aria-pressed={marshmallow}
       aria-label={marshmallow ? "Switch to the dark theme" : "Switch to the marshmallow theme"}
       title={marshmallow ? "Dark theme" : "Marshmallow theme"}
-      className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors active:bg-accent sm:hidden"
+      className="my-auto grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors active:bg-primary/80 sm:hidden"
     >
-      {marshmallow ? <Moon className="size-5" strokeWidth={1.75} /> : <Candy className="size-5 text-primary" strokeWidth={1.75} />}
+      {/* filled like the app's buttons (the Investigate pink in marshmallow) */}
+      {marshmallow ? <Moon className="size-[18px]" strokeWidth={2} /> : <Candy className="size-[18px]" strokeWidth={2} />}
     </button>
   );
 }

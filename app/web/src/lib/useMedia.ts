@@ -18,3 +18,5 @@ export function useMedia(query: string): boolean {
 export const NARROW = "(max-width: 1023px)";
 // from this width the globe fits between both side columns without shrinking
 export const ROOMY = "(min-width: 1280px)";
+// phone width: the phone app shows the essentials and folds the details away
+export const PHONE = "(max-width: 639px)";

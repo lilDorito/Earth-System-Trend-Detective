@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from .config import ROOT
 
 REPO = os.environ.get("HF_DATASET", "lilDorito/earth-trend-data")
-REVISION = os.environ.get("HF_DATASET_REVISION", "7df0edd57686dd0789f40ca42d0d44c5214fa7bb")
+REVISION = os.environ.get("HF_DATASET_REVISION", "51408f2a7c10320d1cd6e67c67627258e0646801")
 LOCAL = os.environ.get("HF_DATASET_PATH")  # a local copy (e.g. data/hf) instead of the Hub
 
 LAT = np.arange(-89.5, 90, 1.0)

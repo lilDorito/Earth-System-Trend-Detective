@@ -1,102 +1,19 @@
-// control panel sections for finding things: ask in plain words, process fingerprints, opposite trends
+// control panel sections for finding things: process fingerprints, opposite trends
 
 import { useEffect, useState } from "react";
-import { ArrowRight, LoaderCircle, Sparkles } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { api, usingMockData } from "@/api";
 import type { Scenario } from "@/api/types";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PanelSection } from "@/components/ui/panel";
-import { boundaryLabel, fitDistance, loadBoundaries } from "@/features/globe/boundaries";
 import { formatLatLon, formatSigned } from "@/lib/format";
 import { plainName } from "@/lib/summary";
 import { cn } from "@/lib/utils";
 import { useTrendMapStore } from "@/store/useTrendMapStore";
-import { readQuestion } from "./places";
 
 const chip =
   "h-7 pointer-coarse:h-9 cursor-pointer rounded-sm border border-input px-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const EXAMPLES = ["droughts in America", "sea ice in the Arctic", "fires in Australia", "rain in India"];
-
-export function AskBox() {
-  const s = useTrendMapStore(
-    useShallow((s) => ({ variables: s.variables, setVariable: s.setVariable, setRegion: s.setRegion, focusOn: s.focusOn, setShowTrend: s.setShowTrend, setHotspot: s.setHotspot })),
-  );
-  const [text, setText] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
-
-  const ask = async (question: string) => {
-    if (!question.trim()) return;
-    const { variable, place, unknownPlace } = readQuestion(question, s.variables, await loadBoundaries().catch(() => []));
-    // a place that matched nothing is reported instead of guessed at
-    if (unknownPlace && !place) {
-      setAnswer(`No country or region called "${unknownPlace}". Try a country, a continent or an area such as the Sahel or the Arctic.`);
-      return;
-    }
-    if (!variable && !place) {
-      setAnswer("Did not catch a topic or a place. Try a word like rain, drought, ice, fire or warming, and a country or continent.");
-      return;
-    }
-    const name = variable ? plainName(s.variables.find((v) => v.key === variable)?.name ?? variable) : null;
-    void s.setHotspot(null);
-    s.setShowTrend(true);
-    if (variable) await s.setVariable(variable);
-    if (place?.kind === "boundary") void s.setRegion({ kind: "boundary", boundary: place.boundary });
-    if (place?.kind === "box") {
-      void s.setRegion({ kind: "box", box: place.named.box, name: place.named.name });
-      const b = place.named.box;
-      const width = (b.east - b.west + 360) % 360 || 360;
-      s.focusOn((b.south + b.north) / 2, ((b.west + width / 2 + 540) % 360) - 180, fitDistance(b));
-    }
-    const where = place ? (place.kind === "box" ? place.named.name : boundaryLabel(place.boundary)) : null;
-    setAnswer(`Showing ${name ?? "the current variable"}${where ? ` in ${where}` : ""}.`);
-  };
-
-  return (
-    <PanelSection className="space-y-2">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void ask(text);
-        }}
-        className="relative"
-      >
-        <Sparkles className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Ask: drought in Africa"
-          aria-label="Ask in plain words"
-          className="pl-8 pr-8 font-sans text-sm"
-        />
-        <button type="submit" aria-label="Ask" className="absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer p-1 text-muted-foreground hover:text-foreground">
-          <ArrowRight className="size-3.5" />
-        </button>
-      </form>
-      {answer ? (
-        <p className="text-xs text-muted-foreground">{answer}</p>
-      ) : (
-        <div className="flex flex-wrap gap-1">
-          {EXAMPLES.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => {
-                setText(q);
-                void ask(q);
-              }}
-              className="cursor-pointer rounded-sm px-1 font-mono text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
-    </PanelSection>
-  );
-}
 
 export function Fingerprints() {
   const s = useTrendMapStore(useShallow((s) => ({ hotspot: s.hotspot, loading: s.hotspotLoading, setHotspot: s.setHotspot })));

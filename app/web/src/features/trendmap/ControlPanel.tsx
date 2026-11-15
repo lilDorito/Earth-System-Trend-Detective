@@ -22,7 +22,7 @@ import { useTrendMapStore, type Display } from "@/store/useTrendMapStore";
 import { useStationStore } from "@/store/useStationStore";
 import { STATION_ELEMENTS, elementFor } from "@/features/stations/elements";
 import { DESCRIPTIONS } from "./descriptions";
-import { AskBox, Fingerprints, OppositeTrends } from "./Discover";
+import { Fingerprints, OppositeTrends } from "./Discover";
 import { FINGERPRINT, bandGradient, styleFor, valueRange } from "./styles";
 import TrendChart from "./TrendChart";
 
@@ -291,7 +291,6 @@ export default function ControlPanel() {
             </PanelSection>
           )}
 
-          {!usingMockData && <AskBox />}
 
           {s.variables.length > 1 && (
             <PanelSection>

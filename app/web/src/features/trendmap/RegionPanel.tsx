@@ -166,7 +166,6 @@ export default function RegionPanel({ region }: { region: TrendRegion }) {
             <Status>
               {(region.share_warming * 100).toFixed(0)}% of the region {style.up}
             </Status>
-            {region.autocorr_corrected && <Status>autocorrelation-corrected</Status>}
           </div>
           {meta && (
             <p className="text-sm leading-relaxed">
